@@ -95,10 +95,10 @@ function createConnectFrame() {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
-        id: 'h5-mobile',
+        id: 'webchat-ui',
         version: '1.0.0',
         platform: 'web',
-        mode: 'operator',
+        mode: 'webchat',
       },
       role: 'operator',
       scopes: ['operator.read', 'operator.write'],

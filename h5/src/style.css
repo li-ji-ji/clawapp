@@ -1,4 +1,5 @@
-/* ===== CSS 变量 ===== */
+@import './components.css';
+
 :root {
   --bg-primary: #1a1a2e;
   --bg-secondary: #16213e;
@@ -24,7 +25,6 @@
   --input-h: 56px;
 }
 
-/* ===== 重置 ===== */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -53,7 +53,6 @@ html, body {
   overflow: hidden;
 }
 
-/* ===== 页面切换 ===== */
 .page {
   position: absolute;
   inset: 0;
@@ -68,7 +67,6 @@ html, body {
   pointer-events: none;
 }
 
-/* ===== 设置页 ===== */
 .setup-page {
   background: var(--bg-primary);
   justify-content: center;
@@ -173,7 +171,6 @@ html, body {
   min-height: 20px;
 }
 
-/* ===== 聊天页头部 ===== */
 .chat-page {
   background: var(--bg-primary);
 }
@@ -239,7 +236,6 @@ html, body {
   background: rgba(255,255,255,0.08);
 }
 
-/* ===== 消息列表 ===== */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -258,7 +254,6 @@ html, body {
   border-radius: 3px;
 }
 
-/* ===== 消息气泡 ===== */
 .msg {
   display: flex;
   margin-bottom: 10px;
@@ -299,7 +294,6 @@ html, body {
   border-bottom-left-radius: 4px;
 }
 
-/* ===== 消息内图片 ===== */
 .msg-bubble img {
   max-width: 100%;
   border-radius: var(--radius-sm);
@@ -307,7 +301,6 @@ html, body {
   cursor: pointer;
 }
 
-/* ===== 工具调用卡片 ===== */
 .tool-card {
   background: rgba(15, 52, 96, 0.3);
   border: 1px solid var(--border);
@@ -339,7 +332,6 @@ html, body {
   color: var(--success);
 }
 
-/* ===== 打字指示器 ===== */
 .typing-indicator {
   display: none;
   padding: 10px 14px;
@@ -372,7 +364,6 @@ html, body {
   30% { transform: translateY(-6px); opacity: 1; }
 }
 
-/* ===== 输入区域 ===== */
 .chat-input-area {
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
@@ -458,7 +449,6 @@ html, body {
   cursor: not-allowed;
 }
 
-/* ===== 图片预览条 ===== */
 .preview-bar {
   display: none;
   padding: 8px 10px 0;
@@ -503,5 +493,3 @@ html, body {
   justify-content: center;
   line-height: 1;
 }
-
-@import './components.css';
