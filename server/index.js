@@ -95,10 +95,10 @@ function createConnectFrame() {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
-        id: 'webchat-ui',
+        id: 'gateway-client',
         version: '1.0.0',
         platform: 'web',
-        mode: 'webchat',
+        mode: 'backend',
       },
       role: 'operator',
       scopes: ['operator.read', 'operator.write'],
@@ -214,7 +214,11 @@ function connectToGateway(clientId) {
 
   log.info(`连接到 Gateway: ${CONFIG.gatewayUrl} [${clientId}]`);
 
-  const upstream = new WebSocket(CONFIG.gatewayUrl);
+  const upstream = new WebSocket(CONFIG.gatewayUrl, {
+    headers: {
+      'Origin': CONFIG.gatewayUrl.replace('ws://', 'http://').replace('wss://', 'https://'),
+    },
+  });
   client.upstream = upstream;
   client.state = 'connecting';
 
