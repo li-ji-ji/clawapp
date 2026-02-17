@@ -137,7 +137,10 @@ export class WsClient {
   }
 
   _scheduleReconnect() {
-    const delay = Math.min(1000 * Math.pow(2, this._reconnectAttempts), MAX_RECONNECT_DELAY)
+    // 前 3 次快速重连（1s），之后指数退避
+    const delay = this._reconnectAttempts < 3
+      ? 1000
+      : Math.min(1000 * Math.pow(2, this._reconnectAttempts - 2), MAX_RECONNECT_DELAY)
     this._reconnectAttempts++
     this._setConnected(false, 'reconnecting')
     this._reconnectTimer = setTimeout(() => this._doConnect(), delay)
@@ -145,8 +148,23 @@ export class WsClient {
 
   request(method, params = {}) {
     return new Promise((resolve, reject) => {
-      if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return reject(new Error('WebSocket 未连接'))
-      if (!this._gatewayReady) return reject(new Error('Gateway 未就绪'))
+      if (!this._ws || this._ws.readyState !== WebSocket.OPEN || !this._gatewayReady) {
+        // 如果正在重连中，等待就绪后重试（最多等 15 秒）
+        if (!this._intentionalClose && this._reconnectAttempts > 0) {
+          const waitTimeout = setTimeout(() => {
+            unsub()
+            reject(new Error('等待重连超时'))
+          }, 15000)
+          const unsub = this.onReady(() => {
+            clearTimeout(waitTimeout)
+            unsub()
+            // 重连成功，重新发送
+            this.request(method, params).then(resolve, reject)
+          })
+          return
+        }
+        return reject(new Error('WebSocket 未连接'))
+      }
       const id = uuid()
       const timer = setTimeout(() => { this._pending.delete(id); reject(new Error('请求超时')) }, REQUEST_TIMEOUT)
       this._pending.set(id, { resolve, reject, timer })

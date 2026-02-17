@@ -146,7 +146,11 @@ async function sendMessage() {
     await wsClient.chatSend(_sessionKey, text, attachments.length ? attachments : undefined)
   } catch (err) {
     showTyping(false)
-    appendSystemMessage(`发送失败: ${err.message}`)
+    if (err.message.includes('未连接') || err.message.includes('超时') || err.message.includes('重连')) {
+      appendSystemMessage('连接中断，正在重连...')
+    } else {
+      appendSystemMessage(`发送失败: ${err.message}`)
+    }
   }
 }
 
