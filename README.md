@@ -1,10 +1,6 @@
 # ClawApp
 
 <p align="center">
-  <img src="docs/image/login-page.png" width="280" alt="ClawApp 登录页" />
-</p>
-
-<p align="center">
   <strong>📱 用手机浏览器和你的 OpenClaw AI 智能体聊天</strong>
 </p>
 
@@ -64,18 +60,18 @@ OpenClaw Gateway（端口 18789）
 
 ## 截图预览
 
-<p align="center">
-  <img src="docs/image/login-page.png" width="280" alt="登录页" />
-</p>
-<p align="center">
-  <img src="docs/image/chat-response.png" width="240" alt="AI 聊天回复" />
-  <img src="docs/image/chat-commands.jpg" width="240" alt="快捷指令面板" />
-  <img src="docs/image/session-manager.jpg" width="240" alt="会话管理" />
-</p>
-<p align="center">
-  <img src="docs/image/commands-panel.png" width="240" alt="指令面板特写" />
-  <img src="docs/image/settings-panel.jpg" width="240" alt="设置与帮助" />
-</p>
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/image/login-page.png" width="220" alt="登录页" /><br/><sub>登录连接</sub></td>
+    <td align="center"><img src="docs/image/chat-response.png" width="220" alt="AI 聊天回复" /><br/><sub>流式聊天</sub></td>
+    <td align="center"><img src="docs/image/chat-commands.jpg" width="220" alt="快捷指令面板" /><br/><sub>快捷指令</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/image/session-manager.jpg" width="220" alt="会话管理" /><br/><sub>会话管理</sub></td>
+    <td align="center"><img src="docs/image/commands-panel.png" width="220" alt="指令面板" /><br/><sub>指令面板</sub></td>
+    <td align="center"><img src="docs/image/settings-panel.jpg" width="220" alt="设置面板" /><br/><sub>设置与帮助</sub></td>
+  </tr>
+</table>
 
 ---
 
