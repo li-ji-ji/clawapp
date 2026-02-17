@@ -19,7 +19,7 @@ function uuid() {
 
 const REQUEST_TIMEOUT = 30000
 const MAX_RECONNECT_DELAY = 30000
-const PING_INTERVAL = 25000  // 客户端心跳间隔
+const PING_INTERVAL = 25000
 
 export class WsClient {
   constructor() {
@@ -38,6 +38,7 @@ export class WsClient {
     this._sessionKey = null
     this._readyCallbacks = []
     this._pingTimer = null
+    this._wsId = 0  // 用于区分新旧 WebSocket 实例
   }
 
   get connected() { return this._connected }
@@ -63,8 +64,9 @@ export class WsClient {
   disconnect() {
     this._intentionalClose = true
     this._stopPing()
-    this._cleanup()
-    if (this._ws) { this._ws.close(); this._ws = null }
+    this._clearReconnectTimer()
+    this._flushPending()
+    this._closeWs()
     this._setConnected(false)
     this._gatewayReady = false
   }
@@ -74,24 +76,32 @@ export class WsClient {
     if (!this._url) return
     this._intentionalClose = false
     this._reconnectAttempts = 0
-    this._cleanup()
-    if (this._ws) { this._ws.close(); this._ws = null }
+    this._stopPing()
+    this._clearReconnectTimer()
+    this._flushPending()
+    this._closeWs()
     this._doConnect()
   }
 
   _doConnect() {
-    this._cleanup()
+    this._closeWs()
     this._gatewayReady = false
     this._setConnected(false, 'connecting')
-    try { this._ws = new WebSocket(this._url) } catch { this._scheduleReconnect(); return }
 
-    this._ws.onopen = () => {
+    const wsId = ++this._wsId  // 标记当前实例
+    let ws
+    try { ws = new WebSocket(this._url) } catch { this._scheduleReconnect(); return }
+    this._ws = ws
+
+    ws.onopen = () => {
+      if (wsId !== this._wsId) return  // 已被新实例替代
       this._reconnectAttempts = 0
       this._setConnected(true)
       this._startPing()
     }
 
-    this._ws.onmessage = (evt) => {
+    ws.onmessage = (evt) => {
+      if (wsId !== this._wsId) return
       let msg
       try { msg = JSON.parse(evt.data) } catch { return }
 
@@ -108,20 +118,27 @@ export class WsClient {
 
       if (msg.type === 'event') {
         if (msg.event === 'proxy.ready') { this._handleProxyReady(msg.data || msg.payload); return }
-        if (msg.event === 'proxy.disconnect') { this._gatewayReady = false; this._setConnected(false, 'disconnected'); return }
+        if (msg.event === 'proxy.disconnect') {
+          this._gatewayReady = false
+          this._setConnected(false, 'disconnected')
+          return
+        }
         if (msg.event === 'proxy.error') { console.error('[ws] proxy error:', msg.data); return }
         this._eventListeners.forEach(fn => { try { fn(msg) } catch (e) { console.error('[ws] handler error:', e) } })
       }
     }
 
-    this._ws.onclose = () => {
+    ws.onclose = () => {
+      if (wsId !== this._wsId) return  // 旧实例的 onclose，忽略
+      this._ws = null
       this._setConnected(false)
       this._gatewayReady = false
       this._stopPing()
-      this._cleanup()
+      this._flushPending()
       if (!this._intentionalClose) this._scheduleReconnect()
     }
-    this._ws.onerror = () => {}
+
+    ws.onerror = () => {}
   }
 
   _handleProxyReady(data) {
@@ -136,7 +153,9 @@ export class WsClient {
     }
     this._gatewayReady = true
     this._setConnected(true, 'ready')
-    this._readyCallbacks.forEach(fn => { try { fn(this._hello, this._sessionKey) } catch (e) { console.error('[ws] ready cb error:', e) } })
+    this._readyCallbacks.forEach(fn => {
+      try { fn(this._hello, this._sessionKey) } catch (e) { console.error('[ws] ready cb error:', e) }
+    })
   }
 
   _setConnected(val, status) {
@@ -144,15 +163,26 @@ export class WsClient {
     this._onStatusChange?.(status || (val ? 'connected' : 'disconnected'))
   }
 
-  _cleanup() {
-    clearTimeout(this._reconnectTimer)
-    this._reconnectTimer = null
+  _closeWs() {
+    if (this._ws) {
+      const old = this._ws
+      this._ws = null
+      this._wsId++  // 让旧实例的回调全部失效
+      try { old.close() } catch {}
+    }
+  }
+
+  _flushPending() {
     for (const [, cb] of this._pending) { clearTimeout(cb.timer); cb.reject(new Error('连接已断开')) }
     this._pending.clear()
   }
 
+  _clearReconnectTimer() {
+    if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null }
+  }
+
   _scheduleReconnect() {
-    // 前 3 次快速重连（1s），之后指数退避
+    this._clearReconnectTimer()
     const delay = this._reconnectAttempts < 3
       ? 1000
       : Math.min(1000 * Math.pow(2, this._reconnectAttempts - 2), MAX_RECONNECT_DELAY)
@@ -161,12 +191,10 @@ export class WsClient {
     this._reconnectTimer = setTimeout(() => this._doConnect(), delay)
   }
 
-  /** 客户端心跳：定期发 ping 帧保持连接活跃 */
   _startPing() {
     this._stopPing()
     this._pingTimer = setInterval(() => {
       if (this._ws && this._ws.readyState === WebSocket.OPEN) {
-        // 浏览器 WebSocket 没有 ping() 方法，发一个轻量的应用层心跳
         try { this._ws.send('{"type":"ping"}') } catch {}
       }
     }, PING_INTERVAL)
@@ -179,8 +207,8 @@ export class WsClient {
   request(method, params = {}) {
     return new Promise((resolve, reject) => {
       if (!this._ws || this._ws.readyState !== WebSocket.OPEN || !this._gatewayReady) {
-        // 如果正在重连中，等待就绪后重试（最多等 15 秒）
-        if (!this._intentionalClose && this._reconnectAttempts > 0) {
+        // 如果正在重连中，等待就绪后重试
+        if (!this._intentionalClose && (this._reconnectAttempts > 0 || !this._gatewayReady)) {
           const waitTimeout = setTimeout(() => {
             unsub()
             reject(new Error('等待重连超时'))
@@ -188,7 +216,6 @@ export class WsClient {
           const unsub = this.onReady(() => {
             clearTimeout(waitTimeout)
             unsub()
-            // 重连成功，重新发送
             this.request(method, params).then(resolve, reject)
           })
           return
