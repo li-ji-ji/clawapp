@@ -383,6 +383,22 @@ npm run dev:server
 
 ---
 
+<h2 id="community">社区交流</h2>
+
+欢迎加入社区，交流使用心得、反馈问题、获取最新动态：
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/image/qq.jpg" width="200" alt="QQ 群" /><br/><sub>QQ 群</sub></td>
+    <td align="center"><img src="docs/image/wx.jpg" width="200" alt="微信群" /><br/><sub>微信群</sub></td>
+  </tr>
+</table>
+
+- 🎮 [Discord 社区](https://discord.com/invite/U9AttmsNHh) — 国际交流频道
+- 🤖 [元宝派社群圈子](https://yb.tencent.com/gp/i/LsvIw7mdR7Lb) — 腾讯元宝派讨论区
+
+---
+
 <details id="english">
 <summary><strong>English Documentation</strong></summary>
 
