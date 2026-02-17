@@ -86,6 +86,12 @@ OpenClaw Gateway（端口 18789）
 curl -fsSL https://raw.githubusercontent.com/qingchencloud/clawapp/main/install.sh | bash
 ```
 
+### 一键部署（Windows PowerShell）
+
+```powershell
+irm https://raw.githubusercontent.com/qingchencloud/clawapp/main/install.ps1 | iex
+```
+
 脚本会自动检测环境、克隆仓库、安装依赖、构建前端、交互式配置 Token，并支持 PM2 常驻运行。如果本地已安装 OpenClaw，会自动读取 Gateway Token。
 
 ### 前提条件
