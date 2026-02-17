@@ -69,6 +69,16 @@ export class WsClient {
     this._gatewayReady = false
   }
 
+  /** 手动触发重连 */
+  reconnect() {
+    if (!this._url) return
+    this._intentionalClose = false
+    this._reconnectAttempts = 0
+    this._cleanup()
+    if (this._ws) { this._ws.close(); this._ws = null }
+    this._doConnect()
+  }
+
   _doConnect() {
     this._cleanup()
     this._gatewayReady = false

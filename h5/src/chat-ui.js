@@ -5,6 +5,8 @@ import { initCommands, showCommands } from './commands.js'
 import { t, formatRelativeTime } from './i18n.js'
 import { initSettings, showSettings } from './settings.js'
 
+const STORAGE_SESSION_KEY = 'openclaw-session-key'
+
 let _messagesEl = null
 let _typingEl = null
 let _textarea = null
@@ -69,7 +71,16 @@ export function createChatPage() {
   return page
 }
 
-export function setSessionKey(key) { _sessionKey = key; updateSessionTitle() }
+export function setSessionKey(key) {
+  // 优先恢复上次使用的会话
+  const saved = localStorage.getItem(STORAGE_SESSION_KEY)
+  if (saved && saved !== key) {
+    _sessionKey = saved
+  } else {
+    _sessionKey = key
+  }
+  updateSessionTitle()
+}
 export function getSessionKey() { return _sessionKey }
 
 export function initChatUI(onSettings) {
@@ -103,8 +114,15 @@ export function initChatUI(onSettings) {
   wsClient.onStatusChange(status => {
     const dot = document.getElementById('status-dot')
     dot.className = 'status-dot'
-    if (status === 'ready' || status === 'connected') dot.classList.add('connected')
-    else if (status === 'connecting' || status === 'reconnecting') dot.classList.add('connecting')
+    if (status === 'ready' || status === 'connected') {
+      dot.classList.add('connected')
+      hideDisconnectBanner()
+    } else if (status === 'connecting' || status === 'reconnecting') {
+      dot.classList.add('connecting')
+      showDisconnectBanner(true)
+    } else if (status === 'disconnected') {
+      showDisconnectBanner(false)
+    }
   })
 }
 
@@ -146,6 +164,8 @@ async function sendMessage() {
   clearAttachments()
   updateSendState()
   showTyping(true)
+  // 发送中禁用输入
+  _textarea.disabled = true
 
   try {
     await wsClient.chatSend(_sessionKey, text, attachments.length ? attachments : undefined)
@@ -156,6 +176,9 @@ async function sendMessage() {
     } else {
       appendSystemMessage(`${t('chat.send.error')}: ${err.message}`)
     }
+  } finally {
+    _textarea.disabled = false
+    _textarea.focus()
   }
 }
 
@@ -620,10 +643,56 @@ function closeSessionPicker() {
   document.querySelector('.session-panel')?.remove()
 }
 
+/** 断连横幅 */
+function showDisconnectBanner(isReconnecting) {
+  hideDisconnectBanner()
+  const banner = document.createElement('div')
+  banner.className = 'disconnect-banner'
+  banner.id = 'disconnect-banner'
+  if (isReconnecting) {
+    banner.innerHTML = `<span class="disconnect-text">${t('chat.reconnecting')}</span>`
+  } else {
+    banner.innerHTML = `
+      <span class="disconnect-text">${t('chat.disconnected')}</span>
+      <button class="disconnect-retry-btn" id="retry-connect-btn">${t('chat.retry')}</button>
+    `
+  }
+  // 插入到 header 后面
+  const header = document.querySelector('.chat-header')
+  if (header) header.after(banner)
+
+  const retryBtn = document.getElementById('retry-connect-btn')
+  if (retryBtn) {
+    retryBtn.onclick = () => {
+      showDisconnectBanner(true)
+      wsClient.reconnect()
+    }
+  }
+}
+
+function hideDisconnectBanner() {
+  document.getElementById('disconnect-banner')?.remove()
+}
+
 /** 切换到指定会话 */
 function switchSession(newKey) {
   _sessionKey = newKey
+  localStorage.setItem(STORAGE_SESSION_KEY, newKey)
   resetStreamState()
   updateSessionTitle()
-  loadHistory()
+  showLoadingOverlay()
+  loadHistory().finally(() => hideLoadingOverlay())
+}
+
+/** 加载遮罩 */
+function showLoadingOverlay() {
+  hideLoadingOverlay()
+  const el = document.createElement('div')
+  el.className = 'chat-loading-overlay'
+  el.innerHTML = '<div class="chat-loading-spinner"></div>'
+  _messagesEl?.parentElement?.appendChild(el)
+}
+
+function hideLoadingOverlay() {
+  document.querySelector('.chat-loading-overlay')?.remove()
 }

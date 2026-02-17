@@ -97,7 +97,7 @@ function initApp() {
 
   // 注册 Gateway 就绪回调 - 每次连接/重连都会触发
   wsClient.onReady((hello, sessionKey) => {
-    setSessionKey(sessionKey)
+    setSessionKey(sessionKey)  // 内部会优先恢复 localStorage 保存的会话
     showPage('chat-page')
     if (!chatInitialized) {
       chatInitialized = true

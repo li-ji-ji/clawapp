@@ -26,6 +26,8 @@ const messages = {
     'chat.load.error': '加载历史失败',
     'chat.send.error': '发送失败',
     'chat.reconnecting': '连接中断，正在重连...',
+    'chat.disconnected': '连接已断开',
+    'chat.retry': '重新连接',
     'chat.aborted': '已中止',
     // 会话管理
     'session.title': '会话管理',
@@ -126,6 +128,8 @@ const messages = {
     'chat.load.error': 'Failed to load history',
     'chat.send.error': 'Send failed',
     'chat.reconnecting': 'Disconnected, reconnecting...',
+    'chat.disconnected': 'Connection lost',
+    'chat.retry': 'Reconnect',
     'chat.aborted': 'Aborted',
     'session.title': 'Sessions',
     'session.new': 'New Session',
