@@ -83,11 +83,11 @@ function renderPreviews() {
 }
 
 export function getAttachments() {
-  return _attachments.map(a => ({
-    name: a.name,
-    mimeType: a.type,
-    data: a.data,
-  }))
+  return _attachments.map(a => {
+    const match = /^data:([^;]+);base64,(.+)$/.exec(a.data)
+    if (!match) return null
+    return { type: 'image', mimeType: match[1], content: match[2] }
+  }).filter(Boolean)
 }
 
 export function clearAttachments() {

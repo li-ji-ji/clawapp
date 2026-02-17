@@ -36,14 +36,17 @@ const COMMAND_GROUPS = [
     ],
   },
   {
+    title: '技能',
+    commands: [
+      { cmd: '/skill ', desc: '执行技能（需补充名称）', fill: true },
+    ],
+  },
+  {
     title: '高级',
     commands: [
       { cmd: '/verbose on', desc: '开启详细输出' },
       { cmd: '/verbose off', desc: '关闭详细输出' },
-      { cmd: '/reasoning on', desc: '开启推理' },
-      { cmd: '/reasoning off', desc: '关闭推理' },
-      { cmd: '/usage tokens', desc: 'Token 用量' },
-      { cmd: '/usage cost', desc: '费用统计' },
+      { cmd: '/compact ', desc: '压缩上下文（可附指令）', fill: true },
     ],
   },
 ]

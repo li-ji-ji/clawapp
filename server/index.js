@@ -46,6 +46,27 @@ const clients = new Map(); // clientId -> { downstream, upstream, state }
 // Express 应用
 const app = express();
 
+// CORS 中间件 - 支持 H5 开发模式（Vite dev server 5173 端口）
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    `http://localhost:${CONFIG.port}`,
+    `http://127.0.0.1:${CONFIG.port}`,
+  ];
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // 健康检查端点
 app.get('/health', (req, res) => {
   res.json({
@@ -101,8 +122,11 @@ function createConnectFrame() {
         mode: 'backend',
       },
       role: 'operator',
-      scopes: ['operator.read', 'operator.write'],
+      scopes: ['operator.admin', 'operator.approvals', 'operator.pairing'],
+      caps: [],
       auth: { token: CONFIG.gatewayToken },
+      locale: 'zh-CN',
+      userAgent: 'OpenClaw-Mobile-Proxy/1.0.0',
     },
   };
 }
@@ -173,23 +197,24 @@ function handleUpstreamMessage(clientId, data) {
 
   // 处理 connect 响应
   if (message.type === 'res' && message.id?.startsWith('connect-')) {
-    if (message.error) {
-      log.error(`Gateway 握手失败 [${clientId}]:`, message.error);
-      // 通知下游
+    if (!message.ok || message.error) {
+      log.error(`Gateway 握手失败 [${clientId}]:`, message.error || '未知错误');
       sendMessage(client.downstream, {
         type: 'event',
         event: 'proxy.error',
         data: { message: 'Gateway 握手失败', error: message.error },
       });
     } else {
-      log.info(`Gateway 握手成功 [${clientId}]`);
+      log.info(`Gateway 握手成功 [${clientId}]`, message.payload?.type || '');
       client.state = 'connected';
       sendMessage(client.downstream, {
         type: 'event',
         event: 'proxy.ready',
-        data: { message: '已连接到 OpenClaw Gateway' },
+        data: { 
+          message: '已连接到 OpenClaw Gateway',
+          hello: message.payload,
+        },
       });
-      // 发送握手期间缓存的消息
       if (client._pendingMessages.length > 0) {
         log.info(`发送 ${client._pendingMessages.length} 条缓存消息 [${clientId}]`);
         for (const msg of client._pendingMessages) {

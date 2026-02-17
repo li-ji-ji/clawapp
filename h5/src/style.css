@@ -515,6 +515,10 @@ html, body {
   cursor: not-allowed;
 }
 
+.send-btn.stop-mode {
+  background: var(--danger);
+}
+
 .preview-bar {
   display: none;
   padding: 8px 10px 0;

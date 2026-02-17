@@ -248,3 +248,17 @@
   color: var(--text-muted);
   padding: 6px 0;
 }
+
+.tool-card .tool-status.error {
+  color: var(--danger);
+}
+
+.code-lang {
+  font-size: 11px;
+  color: var(--text-muted);
+  position: absolute;
+  top: 6px;
+  left: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
