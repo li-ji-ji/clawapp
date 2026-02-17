@@ -17,7 +17,7 @@ import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 
 // 加载环境变量
-config();
+config({ path: join(dirname(fileURLToPath(import.meta.url)), '.env') });
 
 // ES Module 获取 __dirname
 const __filename = fileURLToPath(import.meta.url);
