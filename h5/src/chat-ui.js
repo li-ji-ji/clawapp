@@ -451,23 +451,34 @@ async function showSessionPicker() {
   panel.className = 'session-panel cmd-panel visible'
   panel.innerHTML = `
     <div class="cmd-panel-header">
-      <h3>切换会话</h3>
-      <button class="close-btn">×</button>
+      <h3>会话管理</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="session-action-btn" id="session-new-btn" title="新建会话">＋</button>
+        <button class="close-btn">×</button>
+      </div>
     </div>
     <div class="session-list cmd-list">
       <div class="session-loading">加载中...</div>
     </div>
   `
   panel.querySelector('.close-btn').onclick = () => closeSessionPicker()
+  panel.querySelector('#session-new-btn').onclick = () => promptNewSession()
 
   document.body.appendChild(overlay)
   document.body.appendChild(panel)
 
-  // 加载会话列表
+  await refreshSessionList()
+}
+
+/** 刷新会话列表 */
+async function refreshSessionList() {
+  const listEl = document.querySelector('.session-list')
+  if (!listEl) return
+  listEl.innerHTML = '<div class="session-loading">加载中...</div>'
+
   try {
     const result = await wsClient.sessionsList(50)
     const sessions = result?.sessions || result || []
-    const listEl = panel.querySelector('.session-list')
     listEl.innerHTML = ''
 
     if (!sessions.length) {
@@ -506,26 +517,118 @@ async function showSessionPicker() {
       }
 
       item.innerHTML = `
-        <div style="flex:1;min-width:0">
+        <div class="session-item-content" style="flex:1;min-width:0">
           <div class="cmd-text" style="font-family:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeText(name)}</div>
           ${detail ? `<div class="cmd-desc">${escapeText(detail)}</div>` : ''}
         </div>
         ${timeStr ? `<div class="cmd-desc" style="flex-shrink:0">${timeStr}</div>` : ''}
         ${isActive ? '<div style="color:var(--success);flex-shrink:0">●</div>' : ''}
+        <button class="session-delete-btn" title="删除会话">✕</button>
       `
 
-      item.onclick = () => {
+      // 点击切换会话
+      item.querySelector('.session-item-content').onclick = () => {
         if (key === _sessionKey) { closeSessionPicker(); return }
         switchSession(key)
         closeSessionPicker()
       }
 
+      // 删除按钮
+      item.querySelector('.session-delete-btn').onclick = (e) => {
+        e.stopPropagation()
+        confirmDeleteSession(key, name)
+      }
+
       listEl.appendChild(item)
     })
   } catch (e) {
-    const listEl = panel.querySelector('.session-list')
     listEl.innerHTML = `<div class="session-loading" style="color:var(--danger)">加载失败: ${escapeText(e.message)}</div>`
   }
+}
+
+/** 新建会话弹窗 */
+function promptNewSession() {
+  closeSessionPicker()
+
+  const overlay = document.createElement('div')
+  overlay.className = 'session-overlay cmd-overlay visible'
+
+  const dialog = document.createElement('div')
+  dialog.className = 'session-dialog'
+  dialog.innerHTML = `
+    <h3>新建会话</h3>
+    <div class="form-group" style="margin:16px 0">
+      <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">会话名称</label>
+      <input type="text" id="new-session-name" placeholder="例如: debug、research" 
+        style="width:100%;height:40px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:0 12px;color:var(--text-primary);font-size:14px;outline:none" />
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+        会话 Key 格式: agent:main:&lt;名称&gt;
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="session-dialog-btn cancel">取消</button>
+      <button class="session-dialog-btn confirm">创建</button>
+    </div>
+  `
+
+  overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); dialog.remove() } }
+  dialog.querySelector('.cancel').onclick = () => { overlay.remove(); dialog.remove() }
+  dialog.querySelector('.confirm').onclick = () => {
+    const name = dialog.querySelector('#new-session-name').value.trim()
+    if (!name) return
+    const newKey = `agent:main:${name}`
+    overlay.remove()
+    dialog.remove()
+    switchSession(newKey)
+    appendSystemMessage(`已创建新会话: ${name}`)
+  }
+
+  document.body.appendChild(overlay)
+  document.body.appendChild(dialog)
+  dialog.querySelector('#new-session-name').focus()
+  dialog.querySelector('#new-session-name').onkeydown = (e) => {
+    if (e.key === 'Enter') dialog.querySelector('.confirm').click()
+  }
+}
+
+/** 确认删除会话 */
+function confirmDeleteSession(key, name) {
+  const overlay = document.createElement('div')
+  overlay.className = 'session-overlay cmd-overlay visible'
+
+  const dialog = document.createElement('div')
+  dialog.className = 'session-dialog'
+  dialog.innerHTML = `
+    <h3>删除会话</h3>
+    <p style="color:var(--text-secondary);font-size:14px;margin:12px 0">
+      确定删除「${escapeText(name)}」？<br>此操作不可撤销。
+    </p>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="session-dialog-btn cancel">取消</button>
+      <button class="session-dialog-btn danger">删除</button>
+    </div>
+  `
+
+  overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); dialog.remove() } }
+  dialog.querySelector('.cancel').onclick = () => { overlay.remove(); dialog.remove() }
+  dialog.querySelector('.danger').onclick = async () => {
+    overlay.remove()
+    dialog.remove()
+    try {
+      await wsClient.sessionsDelete(key)
+      // 如果删的是当前会话，切回主会话
+      if (key === _sessionKey) {
+        const mainKey = wsClient.snapshot?.sessionDefaults?.mainSessionKey || 'agent:main:main'
+        switchSession(mainKey)
+      }
+      await refreshSessionList()
+    } catch (e) {
+      appendSystemMessage(`删除失败: ${e.message}`)
+    }
+  }
+
+  document.body.appendChild(overlay)
+  document.body.appendChild(dialog)
 }
 
 function closeSessionPicker() {

@@ -305,3 +305,100 @@
 #session-title:active {
   opacity: 0.7;
 }
+
+/* 会话操作按钮 */
+.session-action-btn {
+  width: 28px;
+  height: 28px;
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.session-action-btn:active {
+  opacity: 0.8;
+  transform: scale(0.95);
+}
+
+.session-delete-btn {
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.cmd-item:hover .session-delete-btn,
+.cmd-item:active .session-delete-btn {
+  opacity: 1;
+}
+
+.session-delete-btn:active {
+  color: var(--danger);
+  background: rgba(231, 76, 60, 0.15);
+}
+
+/* 会话弹窗 */
+.session-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 48px);
+  max-width: 360px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  z-index: 102;
+}
+
+.session-dialog h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.session-dialog-btn {
+  height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.session-dialog-btn.cancel {
+  background: var(--bg-card);
+  color: var(--text-secondary);
+}
+
+.session-dialog-btn.confirm {
+  background: var(--accent);
+  color: #fff;
+}
+
+.session-dialog-btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.session-dialog-btn:active {
+  opacity: 0.8;
+}

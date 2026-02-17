@@ -192,6 +192,14 @@ export class WsClient {
     return this.request('sessions.list', { limit })
   }
 
+  sessionsDelete(key) {
+    return this.request('sessions.delete', { key })
+  }
+
+  sessionsReset(key) {
+    return this.request('sessions.reset', { key })
+  }
+
   onEvent(callback) {
     this._eventListeners.push(callback)
     return () => { this._eventListeners = this._eventListeners.filter(fn => fn !== callback) }
