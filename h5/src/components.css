@@ -748,3 +748,13 @@
   50% { opacity: 1; }
   100% { opacity: 0.5; }
 }
+
+/* 语音录音状态 */
+#mic-btn.recording {
+  color: var(--danger);
+  animation: mic-pulse 1s infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}

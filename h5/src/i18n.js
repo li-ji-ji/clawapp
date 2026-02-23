@@ -112,6 +112,10 @@ const messages = {
     'copy': '复制',
     'copied': '已复制',
     'copy.fail': '失败',
+    'voice.error': '语音识别失败，请重试',
+    'voice.need.https': '语音输入需要 HTTPS 访问，请通过域名访问',
+    'session.new.agent': '智能体 (高级)',
+    'session.new.agent.hint': '默认 main，多智能体场景可切换',
   },
   'en': {
     'app.title': 'ClawApp',
@@ -210,6 +214,10 @@ const messages = {
     'copy': 'Copy',
     'copied': 'Copied',
     'copy.fail': 'Failed',
+    'voice.error': 'Voice recognition failed',
+    'voice.need.https': 'Voice input requires HTTPS access',
+    'session.new.agent': 'Agent (Advanced)',
+    'session.new.agent.hint': 'Default: main',
   }
 }
 

@@ -33,6 +33,10 @@ const SVG_ATTACH = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" 
 const SVG_CMD = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>`
 const SVG_SETTINGS = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`
 const SVG_STOP = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`
+const SVG_MIC = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`
+
+let _recognition = null
+let _isRecording = false
 
 /** 从 OpenClaw 消息中提取可渲染内容（文本 + 图片） */
 function extractContent(message) {
@@ -81,6 +85,7 @@ export function createChatPage() {
     <div class="chat-input-area">
       <button class="icon-btn" id="cmd-btn">${SVG_CMD}</button>
       <button class="icon-btn" id="attach-btn">${SVG_ATTACH}</button>
+      <button class="icon-btn" id="mic-btn" style="display:none">${SVG_MIC}</button>
       <div class="input-wrapper"><textarea id="chat-input" rows="1" placeholder="${t('chat.input.placeholder')}"></textarea></div>
       <button class="send-btn" id="send-btn" disabled>${SVG_SEND}</button>
     </div>
@@ -130,6 +135,15 @@ export function initChatUI(onSettings) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); handleSendClick() }
   })
 
+  // 语音输入
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+  const micBtn = document.getElementById('mic-btn')
+  if (SpeechRecognition && micBtn) {
+    micBtn.style.display = ''
+    const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    micBtn.onclick = () => isSecure ? toggleVoiceInput(SpeechRecognition) : appendSystemMessage(t('voice.need.https'))
+  }
+
   initCommands((cmd, fillOnly) => {
     if (fillOnly) { _textarea.value = cmd; _textarea.focus(); updateSendState() }
     else { _textarea.value = cmd; sendMessage() }
@@ -149,6 +163,39 @@ export function initChatUI(onSettings) {
       showDisconnectBanner(false)
     }
   })
+}
+
+function toggleVoiceInput(SR) {
+  if (_isRecording && _recognition) { _recognition.stop(); return }
+  const micBtn = document.getElementById('mic-btn')
+  _recognition = new SR()
+  _recognition.lang = navigator.language || 'zh-CN'
+  _recognition.interimResults = true
+  _recognition.continuous = false
+  _isRecording = true
+  micBtn.classList.add('recording')
+
+  _recognition.onresult = (e) => {
+    _textarea.value = Array.from(e.results).map(r => r[0].transcript).join('')
+    autoResize()
+    updateSendState()
+  }
+  _recognition.onend = () => {
+    _isRecording = false
+    micBtn.classList.remove('recording')
+    _recognition = null
+    _textarea.focus()
+  }
+  _recognition.onerror = (e) => {
+    _isRecording = false
+    micBtn.classList.remove('recording')
+    _recognition = null
+    console.error('[voice] error:', e.error)
+    if (e.error === 'not-allowed') appendSystemMessage('请允许麦克风权限后重试')
+    else if (e.error === 'network') appendSystemMessage('语音服务不可用（需要网络连接 Google 服务）')
+    else if (e.error !== 'aborted' && e.error !== 'no-speech') appendSystemMessage(`${t('voice.error')} (${e.error})`)
+  }
+  _recognition.start()
 }
 
 function autoResize() {
@@ -712,6 +759,7 @@ function updateSessionTitle() {
     const channel = parts.slice(2).join(':')
     if (channel === 'main') label = t('session.main')
     else label = channel.length > 20 ? channel.substring(0, 20) + '…' : channel
+    if (agent !== 'main') label = `[${agent}] ${label}`
   }
   titleEl.textContent = label
   titleEl.title = _sessionKey
@@ -820,6 +868,7 @@ async function refreshSessionList() {
 /** 新建会话弹窗 */
 function promptNewSession() {
   closeSessionPicker()
+  const defaultAgent = wsClient.snapshot?.sessionDefaults?.defaultAgentId || 'main'
 
   const overlay = document.createElement('div')
   overlay.className = 'session-overlay cmd-overlay visible'
@@ -830,10 +879,18 @@ function promptNewSession() {
     <h3>${t('session.new')}</h3>
     <div class="form-group" style="margin:16px 0">
       <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">${t('session.new.name')}</label>
-      <input type="text" id="new-session-name" placeholder="${t('session.new.name.placeholder')}" 
+      <input type="text" id="new-session-name" placeholder="${t('session.new.name.placeholder')}"
         style="width:100%;height:40px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:0 12px;color:var(--text-primary);font-size:14px;outline:none" />
-      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
-        ${t('session.new.hint')}
+    </div>
+    <div style="margin:0 0 16px">
+      <div id="agent-toggle" style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
+        <span style="font-size:13px;color:var(--text-muted)">${t('session.new.agent')}</span>
+        <span id="agent-arrow" style="font-size:11px;color:var(--text-muted)">▶</span>
+      </div>
+      <div id="agent-field" style="display:none;margin-top:8px">
+        <input type="text" id="new-session-agent" value="${defaultAgent}" placeholder="main"
+          style="width:100%;height:40px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:0 12px;color:var(--text-primary);font-size:14px;outline:none" />
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${t('session.new.agent.hint')}</div>
       </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
@@ -842,12 +899,19 @@ function promptNewSession() {
     </div>
   `
 
+  dialog.querySelector('#agent-toggle').onclick = () => {
+    const f = dialog.querySelector('#agent-field')
+    const visible = f.style.display !== 'none'
+    f.style.display = visible ? 'none' : 'block'
+    dialog.querySelector('#agent-arrow').textContent = visible ? '▶' : '▼'
+  }
   overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); dialog.remove() } }
   dialog.querySelector('.cancel').onclick = () => { overlay.remove(); dialog.remove() }
   dialog.querySelector('.confirm').onclick = () => {
     const name = dialog.querySelector('#new-session-name').value.trim()
     if (!name) return
-    const newKey = `agent:main:${name}`
+    const agent = dialog.querySelector('#new-session-agent')?.value.trim() || defaultAgent
+    const newKey = `agent:${agent}:${name}`
     overlay.remove()
     dialog.remove()
     switchSession(newKey)

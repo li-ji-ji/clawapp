@@ -50,6 +50,8 @@ OpenClaw Gateway（端口 18789）
 - 📝 Markdown 渲染 + 代码高亮（XSS 防护）
 - ⚡ 快捷指令面板（/model、/think、/new 等）
 - 🔧 工具调用实时状态显示
+- 🎤 语音输入（语音转文字，需 HTTPS 环境）
+- 🤖 多智能体支持（新建会话时可选择不同 Agent）
 - 📋 会话管理（切换、新建、删除）
 - 🌙 主题切换（亮色 / 暗色 / 跟随系统）
 - 🌐 中英文切换
@@ -205,6 +207,8 @@ pm2 save && pm2 startup
 
 [cftunnel](https://github.com/qingchencloud/cftunnel) 是 Cloudflare Tunnel 一键管理 CLI，免费、自动 HTTPS、无需公网 IP。
 
+> 💡 **为什么推荐 cftunnel？** 浏览器的语音输入（🎤）功能要求 HTTPS 安全上下文，局域网 HTTP 访问无法使用麦克风。cftunnel 自动提供 HTTPS，一条命令即可解锁语音输入等高级功能。
+
 **临时分享（零配置）：**
 
 ```bash
@@ -246,6 +250,8 @@ ssh -f -N \
 > - 防火墙放行 3210 端口
 
 手机访问 `http://服务器IP:3210`
+
+> ⚠️ SSH 隧道默认是 HTTP，语音输入功能不可用。如需语音输入，请配合 Nginx SSL 或改用 cftunnel。
 
 ### 方案三：Nginx 反向代理
 
@@ -393,6 +399,10 @@ npm run dev:server
 **Q: 怎么添加更多语言？**
 
 编辑 `h5/src/i18n.js`，添加新的语言包（如 `'ja'`），然后在 `settings.js` 中添加对应按钮。
+
+**Q: 语音输入按钮点了没反应？**
+
+浏览器要求 HTTPS 才能使用麦克风。局域网 HTTP 访问时，语音按钮会提示需要 HTTPS。解决方案：使用 `cftunnel quick 3210` 一键开启 HTTPS 隧道，详见[外网访问](#remote)。
 
 **Q: Docker 构建时 npm install 超时失败？**
 
