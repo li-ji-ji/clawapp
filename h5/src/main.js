@@ -27,7 +27,7 @@ function createSetupPage() {
   page.className = 'page setup-page'
   page.id = 'setup-page'
   const defaultHost = location.hostname && location.hostname !== 'localhost'
-    ? `${location.hostname}:${location.port || 3210}`
+    ? (location.port ? `${location.hostname}:${location.port}` : location.hostname)
     : 'localhost:3210'
 
   page.innerHTML = `
