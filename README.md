@@ -34,27 +34,28 @@ ClawApp 解决了这个问题：
 ```
 手机浏览器（任意网络）
     ↓ WebSocket (WS / WSS)
-代理服务端（ClawApp Server，端口 3210）
-    ↓ WebSocket (localhost)
+代理服务端（ClawApp Server，端口 3210，离线缓存）
+    ↓ WebSocket + Ed25519 设备签名
 OpenClaw Gateway（端口 18789）
 ```
 
-代理服务端自动完成 Gateway 握手认证，同时提供 H5 聊天页面，打开就能用，不需要装 App。
+代理服务端自动完成 Ed25519 设备签名握手认证（兼容 OpenClaw 2.13+），同时提供 H5 聊天页面，打开就能用，不需要装 App。
 
 ---
 
 <h2 id="features">功能特性</h2>
 
 - 💬 实时流式聊天（打字机效果）
-- 📷 图片发送
-- 📝 Markdown 渲染 + 代码高亮
+- 📷 图片收发（拍照/相册上传，AI 图片回复）
+- 📝 Markdown 渲染 + 代码高亮（XSS 防护）
 - ⚡ 快捷指令面板（/model、/think、/new 等）
 - 🔧 工具调用实时状态显示
 - 📋 会话管理（切换、新建、删除）
 - 🌙 主题切换（亮色 / 暗色 / 跟随系统）
 - 🌐 中英文切换
-- 🔄 自动重连 + 心跳保活
-- 🔒 Token 认证
+- 🔄 智能重连（断线自动恢复，无闪烁，消息去重）
+- 🔒 Token + Ed25519 设备认证（兼容 OpenClaw 2.13+）
+- 💾 离线消息缓存（IndexedDB 持久化，断网可查看历史，恢复后自动同步）
 - 👋 新用户功能引导
 - 📱 PWA 支持（添加到主屏幕，离线可用）
 - 📦 Android APK 打包（Capacitor + GitHub Actions 自动构建）
@@ -200,7 +201,34 @@ pm2 save && pm2 startup
 
 不在同一网络时，有以下方案：
 
-### 方案一：SSH 隧道（简单快速）
+### 方案一：cftunnel（推荐，一条命令搞定）
+
+[cftunnel](https://github.com/qingchencloud/cftunnel) 是 Cloudflare Tunnel 一键管理 CLI，免费、自动 HTTPS、无需公网 IP。
+
+**临时分享（零配置）：**
+
+```bash
+# 安装 cftunnel
+curl -fsSL https://raw.githubusercontent.com/qingchencloud/cftunnel/main/install.sh | bash
+
+# 一条命令穿透
+cftunnel quick 3210
+# ✔ 隧道已启动: https://xxx-yyy-zzz.trycloudflare.com
+```
+
+**固定域名（需要 Cloudflare 账号 + 自有域名）：**
+
+```bash
+cftunnel init                                          # 配置 CF API Token
+cftunnel create my-tunnel                              # 创建隧道
+cftunnel add clawapp 3210 --domain chat.example.com    # 添加路由（自动创建 DNS）
+cftunnel up                                            # 启动
+cftunnel install                                       # 注册开机自启
+```
+
+> 详见 [cftunnel 文档](https://cftunnel.qt.cool) · 也有 [桌面客户端](https://github.com/qingchencloud/cftunnel-app) 可视化管理
+
+### 方案二：SSH 隧道（简单快速）
 
 需要一台有公网 IP 的服务器。
 
@@ -218,21 +246,6 @@ ssh -f -N \
 > - 防火墙放行 3210 端口
 
 手机访问 `http://服务器IP:3210`
-
-### 方案二：Cloudflare Tunnel（免费，无需公网 IP）
-
-```bash
-# 安装
-brew install cloudflared  # Mac
-# Linux: https://github.com/cloudflare/cloudflared/releases
-
-# 一键穿透（临时域名）
-cloudflared tunnel --url http://localhost:3210
-```
-
-会输出一个 `https://xxx.trycloudflare.com` 地址，手机直接访问即可。WebSocket 自动走 WSS 加密。
-
-> 固定域名需要 Cloudflare 账号 + 自有域名，详见 [Cloudflare Tunnel 文档](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
 
 ### 方案三：Nginx 反向代理
 
@@ -259,8 +272,8 @@ server {
 
 | 方案 | 优点 | 缺点 |
 |------|------|------|
+| **cftunnel（推荐）** | **一条命令，免费，自动 HTTPS，开机自启** | **依赖 Cloudflare 服务** |
 | SSH 隧道 | 简单，无需额外软件 | 需要公网服务器，隧道可能断开 |
-| Cloudflare Tunnel | 免费，自动 HTTPS，稳定 | 依赖 Cloudflare 服务 |
 | Nginx 反代 | 完全可控，自定义域名 | 需要服务器 + SSL 配置 |
 | Tailscale/ZeroTier | P2P 直连，加密 | 手机也要装客户端 |
 
@@ -313,6 +326,8 @@ clawapp/
 │   │   ├── main.js        # 入口 + 连接页
 │   │   ├── ws-client.js   # WebSocket 协议层
 │   │   ├── chat-ui.js     # 聊天 UI + 会话管理
+│   │   ├── message-db.js  # IndexedDB 离线消息存储
+│   │   ├── offline-queue.js # 离线队列 + 增量同步
 │   │   ├── commands.js    # 快捷指令面板
 │   │   ├── markdown.js    # Markdown 渲染 + 代码高亮
 │   │   ├── media.js       # 图片处理
@@ -485,6 +500,8 @@ ssh -f -N -L 127.0.0.1:18789:127.0.0.1:18789 user@你的电脑IP
 
 - [OpenClaw](https://github.com/openclaw/openclaw) - AI 智能体平台
 - [OpenClaw 中文汉化版](https://github.com/1186258278/OpenClawChineseTranslation) - 社区汉化
+- [cftunnel](https://github.com/qingchencloud/cftunnel) - Cloudflare Tunnel 一键管理 CLI（推荐用于外网访问）
+- [cftunnel-app](https://github.com/qingchencloud/cftunnel-app) - cftunnel 桌面客户端
 
 ---
 
@@ -534,13 +551,13 @@ Open `http://your-ip:3210` on your phone.
 
 ### Remote Access
 
+- **cftunnel (recommended)**: `cftunnel quick 3210` — [github.com/qingchencloud/cftunnel](https://github.com/qingchencloud/cftunnel)
 - **SSH Tunnel**: `ssh -f -N -R 0.0.0.0:3210:localhost:3210 user@server`
-- **Cloudflare Tunnel**: `cloudflared tunnel --url http://localhost:3210`
 - **Nginx**: Configure WebSocket proxy to port 3210
 
 ### Features
 
-Real-time streaming chat, image attachments, Markdown rendering, session management, dark/light/auto theme, English/Chinese i18n, auto-reconnect, token auth.
+Real-time streaming chat, image send & receive, Markdown rendering, offline message cache (IndexedDB), Ed25519 device auth, session management, dark/light/auto theme, English/Chinese i18n, smart reconnect (no flicker), XSS protection, token auth.
 
 </details>
 
