@@ -1,9 +1,10 @@
-import { wsClient } from './ws-client.js'
+import { wsClient, uuid } from './ws-client.js'
 import { renderMarkdown } from './markdown.js'
 import { initMedia, pickImage, getAttachments, clearAttachments, hasAttachments, showLightbox } from './media.js'
 import { initCommands, showCommands } from './commands.js'
 import { t, formatRelativeTime } from './i18n.js'
 import { initSettings, showSettings } from './settings.js'
+import { saveMessage, saveMessages, getLocalMessages, clearSessionMessages, isStorageAvailable, saveSessionInfo } from './message-db.js'
 
 const STORAGE_SESSION_KEY = 'clawapp-session-key'
 
@@ -18,7 +19,9 @@ let _isSending = false     // chat.send 请求中
 let _messageQueue = []     // 消息队列（发送中时排队）
 let _currentAiBubble = null
 let _currentAiText = ''
+let _currentAiImages = []
 let _currentRunId = null
+let _lastHistoryHash = ''  // 防止重连时重复渲染
 let _toolCards = new Map()
 let _onSettingsCallback = null
 let _renderTimer = null    // 节流渲染定时器
@@ -31,18 +34,23 @@ const SVG_CMD = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" str
 const SVG_SETTINGS = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`
 const SVG_STOP = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`
 
-/** 从 OpenClaw 消息对象中提取纯文本 */
-function extractText(message) {
+/** 从 OpenClaw 消息中提取可渲染内容（文本 + 图片） */
+function extractContent(message) {
   if (!message || typeof message !== 'object') return null
   const content = message.content
-  if (typeof content === 'string') return stripThinkingTags(content)
+  if (typeof content === 'string') return { text: stripThinkingTags(content), images: [] }
   if (Array.isArray(content)) {
-    const parts = content
-      .filter(p => p.type === 'text' && typeof p.text === 'string')
-      .map(p => p.text)
-    if (parts.length > 0) return stripThinkingTags(parts.join('\n'))
+    const texts = [], images = []
+    for (const block of content) {
+      if (block.type === 'text' && typeof block.text === 'string') texts.push(block.text)
+      else if (block.type === 'image' && block.data && !block.omitted) {
+        images.push({ mediaType: block.mimeType || 'image/png', data: block.data })
+      }
+    }
+    const text = texts.length ? stripThinkingTags(texts.join('\n')) : ''
+    if (text || images.length) return { text, images }
   }
-  if (typeof message.text === 'string') return stripThinkingTags(message.text)
+  if (typeof message.text === 'string') return { text: stripThinkingTags(message.text), images: [] }
   return null
 }
 
@@ -195,13 +203,14 @@ async function doSend(text, attachments) {
   if (text) {
     console.log('[chat] appendUserMessage:', text.substring(0, 50))
     appendUserMessage(text, attachments)
+    // 保存用户消息到本地（含附件）
+    saveMessage({ id: uuid(), sessionKey: _sessionKey, role: 'user', content: text, attachments: attachments?.length ? attachments : undefined, timestamp: Date.now() })
   }
   showTyping(true)
   _isSending = true
   _textarea.disabled = true
 
   try {
-    console.log('[chat] sending to session:', _sessionKey)
     await wsClient.chatSend(_sessionKey, text, attachments.length ? attachments : undefined)
   } catch (err) {
     showTyping(false)
@@ -254,25 +263,29 @@ function handleChatEvent(payload) {
   const { state } = payload
 
   if (state === 'delta') {
-    const text = extractText(payload.message)
-    if (text && text.length > _currentAiText.length) {
+    const c = extractContent(payload.message)
+    if (c?.text && c.text.length > _currentAiText.length) {
       showTyping(false)
       if (!_currentAiBubble) { _currentAiBubble = createAiBubble(); _currentRunId = payload.runId }
-      _currentAiText = text
+      _currentAiText = c.text
+      if (c.images.length) _currentAiImages = c.images
       throttledRender()
     }
     return
   }
 
   if (state === 'final') {
-    const finalText = extractText(payload.message)
+    const c = extractContent(payload.message)
+    const finalText = c?.text
+    const finalImages = c?.images || []
     // 忽略空 final（Gateway 会为一条消息触发多个 run，部分是空 final）
-    if (!_currentAiBubble && !finalText) return
+    if (!_currentAiBubble && !finalText && !finalImages.length) return
     showTyping(false)
-    // 如果流式阶段没有创建 bubble，从 final message 中提取文本
-    if (!_currentAiBubble && finalText) {
+    // 如果流式阶段没有创建 bubble，从 final message 中提取
+    if (!_currentAiBubble && (finalText || finalImages.length)) {
       _currentAiBubble = createAiBubble()
-      _currentAiText = finalText
+      _currentAiText = finalText || ''
+      _currentAiImages = finalImages
     }
     // 移除光标元素
     const wrapper = _currentAiBubble?.parentElement
@@ -282,9 +295,14 @@ function handleChatEvent(payload) {
       const time = wrapper.querySelector('.msg-time')
       if (time) time.textContent = formatTime(new Date())
     }
-    if (_currentAiBubble && _currentAiText) {
+    if (_currentAiBubble && (_currentAiText || _currentAiImages.length)) {
       _currentAiBubble.innerHTML = renderMarkdown(_currentAiText)
+      appendImagesToEl(_currentAiBubble, _currentAiImages)
       bindImageClicks(_currentAiBubble)
+    }
+    // 保存 AI 回复到本地
+    if (_currentAiText) {
+      saveMessage({ id: payload.runId || uuid(), sessionKey: _sessionKey, role: 'assistant', content: _currentAiText, timestamp: Date.now() })
     }
     resetStreamState()
     processMessageQueue()
@@ -373,8 +391,9 @@ function handleAgentEvent(payload) {
 
 function resetStreamState() {
   // 最后一次渲染确保完整
-  if (_currentAiBubble && _currentAiText) {
+  if (_currentAiBubble && (_currentAiText || _currentAiImages.length)) {
     _currentAiBubble.innerHTML = renderMarkdown(_currentAiText)
+    appendImagesToEl(_currentAiBubble, _currentAiImages)
     bindImageClicks(_currentAiBubble)
     scrollToBottom()
   }
@@ -382,6 +401,7 @@ function resetStreamState() {
   _lastRenderTime = 0
   _currentAiBubble = null
   _currentAiText = ''
+  _currentAiImages = []
   _currentRunId = null
   _isStreaming = false
   _toolCards.clear()
@@ -492,12 +512,13 @@ function appendUserMessage(text, attachments, msgTime) {
   scrollToBottom()
 }
 
-function appendAiMessage(text, msgTime) {
+function appendAiMessage(text, msgTime, images) {
   const wrapper = document.createElement('div')
   wrapper.className = 'msg ai'
   const bubble = document.createElement('div')
   bubble.className = 'msg-bubble'
   bubble.innerHTML = renderMarkdown(text)
+  appendImagesToEl(bubble, images)
   bindImageClicks(bubble)
   
   // 添加时间戳
@@ -528,6 +549,16 @@ function scrollToBottom() {
   requestAnimationFrame(() => { _messagesEl.scrollTop = _messagesEl.scrollHeight })
 }
 
+function appendImagesToEl(el, images) {
+  if (!images?.length) return
+  images.forEach(img => {
+    const imgEl = document.createElement('img')
+    imgEl.src = `data:${img.mediaType};base64,${img.data}`
+    imgEl.className = 'msg-img'
+    el.appendChild(imgEl)
+  })
+}
+
 function bindImageClicks(container) {
   container.querySelectorAll('img').forEach(img => { img.onclick = () => showLightbox(img.src) })
 }
@@ -553,28 +584,77 @@ function formatTime(date) {
 }
 
 export async function loadHistory() {
-  if (!_sessionKey || !wsClient.gatewayReady) return
+  if (!_sessionKey) return
+  const hasExisting = _messagesEl?.querySelector('.msg')
+
+  // 首次加载：显示本地缓存
+  if (!hasExisting && isStorageAvailable()) {
+    const local = await getLocalMessages(_sessionKey, 200)
+    if (local.length) {
+      clearMessages()
+      local.forEach(msg => {
+        const msgTime = msg.timestamp ? new Date(msg.timestamp) : new Date()
+        if (msg.role === 'user') appendUserMessage(msg.content || '', msg.attachments || null, msgTime)
+        else appendAiMessage(msg.content || '', msgTime)
+      })
+      scrollToBottom()
+    }
+  }
+
+  // 从服务端拉取
+  if (!wsClient.gatewayReady) return
   try {
     const result = await wsClient.chatHistory(_sessionKey, 200)
-    // 先清空旧消息（不管新历史是否为空）
-    clearMessages()
     if (!result?.messages?.length) {
-      appendSystemMessage(t('chat.no.messages'))
+      if (!_messagesEl.querySelector('.msg')) { clearMessages(); appendSystemMessage(t('chat.no.messages')) }
       return
     }
-    // 渲染历史消息
-    result.messages.forEach(msg => {
-      const text = extractText(msg)
-      if (!text) return
+    // 去重
+    const deduped = dedupeHistory(result.messages)
+    // 算 hash，没变就跳过渲染
+    const hash = deduped.map(m => `${m.role}:${m.text?.length || 0}`).join('|')
+    if (hash === _lastHistoryHash && hasExisting) return
+    _lastHistoryHash = hash
+
+    clearMessages()
+    deduped.forEach(msg => {
       const msgTime = msg.timestamp ? new Date(msg.timestamp) : new Date()
-      if (msg.role === 'user') appendUserMessage(text, null, msgTime)
-      else if (msg.role === 'assistant') appendAiMessage(text, msgTime)
+      if (msg.role === 'user') {
+        appendUserMessage(msg.text, msg.images?.length ? msg.images.map(i => ({ content: i.data, mimeType: i.mediaType })) : null, msgTime)
+      } else if (msg.role === 'assistant') {
+        appendAiMessage(msg.text, msgTime, msg.images)
+      }
     })
+    saveMessages(result.messages.map(m => {
+      const c = extractContent(m)
+      return { id: m.id || uuid(), sessionKey: _sessionKey, role: m.role, content: c?.text || '', timestamp: m.timestamp || Date.now() }
+    }))
     scrollToBottom()
   } catch (e) {
     console.error('[chat] loadHistory error:', e)
-    appendSystemMessage(`${t('chat.load.error')}: ${e.message}`)
+    if (!_messagesEl.querySelector('.msg')) appendSystemMessage(`${t('chat.load.error')}: ${e.message}`)
   }
+}
+
+/** 去重：合并 Gateway 重试产生的重复消息 */
+function dedupeHistory(messages) {
+  const deduped = []
+  for (const msg of messages) {
+    if (msg.role === 'toolResult') continue
+    const c = extractContent(msg)
+    if (!c?.text && !c?.images?.length) continue
+    const last = deduped[deduped.length - 1]
+    if (last && last.role === msg.role) {
+      if (msg.role === 'user' && last.text === (c.text || '')) continue
+      if (msg.role === 'assistant') {
+        last.text = [last.text, c.text].filter(Boolean).join('\n')
+        last.images = [...(last.images || []), ...(c.images || [])]
+        continue
+      }
+    }
+    deduped.push({ role: msg.role, text: c.text || '', images: c.images, timestamp: msg.timestamp })
+  }
+  return deduped
 }
 
 /** 清空消息区域（保留 typing indicator） */
@@ -831,6 +911,7 @@ function hideDisconnectBanner() {
 function switchSession(newKey) {
   _sessionKey = newKey
   localStorage.setItem(STORAGE_SESSION_KEY, newKey)
+  _lastHistoryHash = ''
   resetStreamState()
   updateSessionTitle()
   showLoadingOverlay()

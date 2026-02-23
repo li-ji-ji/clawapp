@@ -4,15 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ClawApp - Mobile Chat Client for OpenClaw AI Agent | OpenClaw AI 智能体移动端客户端</title>
-<meta name="description" content="ClawApp is a mobile H5 chat client for OpenClaw AI Agent platform. Streaming chat, image upload, quick commands, session management, dark mode, PWA & APK support. ClawApp 是 OpenClaw AI 智能体平台的移动端客户端，支持流式聊天、图片发送、快捷指令、会话管理、主题切换，打开手机浏览器即可使用。">
-<meta name="keywords" content="ClawApp,OpenClaw,AI Agent,AI Chat,mobile chat client,H5,WebSocket,PWA,APK,self-hosted,streaming chat,dark mode,i18n,智能体,移动端,聊天,AI助手,开源,晴辰云">
+<meta name="description" content="ClawApp is a mobile H5 chat client for OpenClaw AI Agent platform. Streaming chat, image upload, offline cache, Ed25519 device auth, quick commands, session management, dark mode, PWA & APK support. ClawApp 是 OpenClaw AI 智能体平台的移动端客户端，支持流式聊天、图片发送、离线缓存、设备认证、快捷指令、会话管理，打开手机浏览器即可使用。">
+<meta name="keywords" content="ClawApp,OpenClaw,AI Agent,AI Chat,mobile chat client,H5,WebSocket,PWA,APK,self-hosted,streaming chat,dark mode,i18n,offline,Ed25519,IndexedDB,智能体,移动端,聊天,AI助手,开源,晴辰云,离线缓存,设备认证">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="author" content="武汉晴辰天下网络科技有限公司">
 <link rel="canonical" href="https://clawapp.qt.cool">
 <link rel="alternate" hreflang="zh-CN" href="https://clawapp.qt.cool">
 <link rel="alternate" hreflang="x-default" href="https://clawapp.qt.cool">
 <meta property="og:title" content="ClawApp - Mobile Chat Client for OpenClaw AI Agent">
-<meta property="og:description" content="Chat with your OpenClaw AI agent from your phone. Streaming responses, image upload, quick commands, session management. 用手机浏览器和你的 OpenClaw AI 智能体聊天。">
+<meta property="og:description" content="Chat with your OpenClaw AI agent from your phone. Streaming responses, image upload, offline cache, Ed25519 device auth, session management. 用手机浏览器和你的 OpenClaw AI 智能体聊天，支持离线缓存和设备认证。">
 <meta property="og:url" content="https://clawapp.qt.cool">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ClawApp">
@@ -40,11 +40,11 @@
   "url": "https://clawapp.qt.cool",
   "applicationCategory": "CommunicationApplication",
   "operatingSystem": "Web, Android, iOS",
-  "softwareVersion": "1.0.0",
+  "softwareVersion": "1.1.0",
   "license": "https://opensource.org/licenses/MIT",
   "isAccessibleForFree": true,
   "screenshot": "https://clawapp.qt.cool/image/chat-response.png",
-  "featureList": "Streaming chat, Image upload, Quick commands, Session management, Dark mode, PWA, i18n, Auto-reconnect",
+  "featureList": "Streaming chat, Image upload, Offline cache, Ed25519 device auth, Quick commands, Session management, Dark mode, PWA, i18n, Auto-reconnect, XSS protection",
   "downloadUrl": "https://github.com/qingchencloud/clawapp/releases",
   "installUrl": "https://github.com/qingchencloud/clawapp#quickstart",
   "offers": {
@@ -172,7 +172,7 @@ ClawApp
 <circle cx="24" cy="32" r="3" fill="#e94560"/><circle cx="32" cy="32" r="3" fill="#e94560"/><circle cx="40" cy="32" r="3" fill="#e94560"/>
 </svg>
 <h1>ClawApp</h1>
-<p>用手机浏览器和你的 OpenClaw AI 智能体聊天<br>流式对话 · 图片发送 · 快捷指令 · 会话管理</p>
+<p>用手机浏览器和你的 OpenClaw AI 智能体聊天<br>流式对话 · 图片发送 · 离线缓存 · 设备认证 · 会话管理</p>
 <div class="hero-btns">
 <a href="https://github.com/qingchencloud/clawapp" class="btn btn-primary">
 <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -198,8 +198,8 @@ GitHub
 </div>
 <div class="feature-card">
 <div class="icon"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
-<h3>图片发送</h3>
-<p>支持拍照和相册选取，图片预览、压缩上传，AI 可识别图片内容</p>
+<h3>图片收发</h3>
+<p>拍照/相册选取、压缩上传，AI 可识别图片内容并在回复中返回图片</p>
 </div>
 <div class="feature-card">
 <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg></div>
@@ -219,12 +219,17 @@ GitHub
 <div class="feature-card">
 <div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
 <h3>安全认证</h3>
-<p>Token 双重认证，Gateway Token 不暴露给客户端，支持 HTTPS/WSS</p>
+<p>Token 双重认证 + Ed25519 设备签名，兼容 OpenClaw 2.13+，支持 HTTPS/WSS</p>
 </div>
 <div class="feature-card">
 <div class="icon"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><path d="M12 18h.01"/></svg></div>
-<h3>PWA + APK</h3>
-<p>支持添加到主屏幕作为 PWA 应用，也可通过 GitHub Actions 自动构建 Android APK</p>
+<h3>PWA + 离线缓存</h3>
+<p>添加到主屏幕作为 PWA 应用，IndexedDB 本地消息持久化，断网可查看历史，恢复后自动同步</p>
+</div>
+<div class="feature-card">
+<div class="icon"><svg viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></div>
+<h3>智能重连</h3>
+<p>断线自动重连 + 心跳保活，重连后无闪烁恢复聊天，消息自动去重</p>
 </div>
 </div>
 </div>
@@ -251,14 +256,14 @@ GitHub
 <div class="container">
 <div class="section-title">
 <h2>工作原理</h2>
-<p>WebSocket 代理桥接，自动完成 Gateway 握手</p>
+<p>WebSocket 代理桥接，Ed25519 设备签名自动握手</p>
 </div>
 <div class="arch">
-<div class="arch-node"><strong>手机浏览器</strong><span>任意网络</span></div>
+<div class="arch-node"><strong>手机浏览器</strong><span>Token 认证</span></div>
 <div class="arch-arrow">&#8594;</div>
-<div class="arch-node"><strong>ClawApp Server</strong><span>:3210 WS 代理</span></div>
+<div class="arch-node"><strong>ClawApp Server</strong><span>:3210 WS 代理 + 离线缓存</span></div>
 <div class="arch-arrow">&#8594;</div>
-<div class="arch-node"><strong>OpenClaw Gateway</strong><span>:18789 本机</span></div>
+<div class="arch-node"><strong>OpenClaw Gateway</strong><span>:18789 Ed25519 签名</span></div>
 </div>
 </div>
 </section>
@@ -304,6 +309,44 @@ npm start
 
 # 手机访问 http://你的电脑IP:3210</div>
 </div>
+</div>
+</section>
+
+<section id="remote">
+<div class="container">
+<div class="section-title">
+<h2>外网访问</h2>
+<p>不在同一 WiFi？用 <a href="https://cftunnel.qt.cool" target="_blank" rel="noopener">cftunnel</a> 一条命令搞定公网穿透</p>
+</div>
+<div class="features" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+<div class="feature-card">
+<div class="icon"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+<h3>临时分享（零配置）</h3>
+<div class="code-wrapper" style="margin-top:12px">
+<div class="code-block active" style="display:block;border:1px solid var(--border);border-radius:var(--radius);font-size:.82rem;padding:14px 16px">cftunnel quick 3210
+# ✔ https://xxx-yyy.trycloudflare.com</div>
+</div>
+<p style="color:var(--text3);font-size:.82rem;margin-top:10px">免费、自动 HTTPS、无需域名和公网 IP</p>
+</div>
+<div class="feature-card">
+<div class="icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+<h3>固定域名（持久稳定）</h3>
+<div class="code-wrapper" style="margin-top:12px">
+<div class="code-block active" style="display:block;border:1px solid var(--border);border-radius:var(--radius);font-size:.82rem;padding:14px 16px">cftunnel init
+cftunnel create my-tunnel
+cftunnel add clawapp 3210 --domain chat.example.com
+cftunnel up</div>
+</div>
+<p style="color:var(--text3);font-size:.82rem;margin-top:10px">自有域名 + 开机自启 <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.8rem">cftunnel install</code></p>
+</div>
+</div>
+<p style="text-align:center;margin-top:24px">
+<a href="https://github.com/qingchencloud/cftunnel" class="btn btn-outline" style="font-size:.85rem" target="_blank" rel="noopener">
+<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-2px"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+cftunnel GitHub
+</a>
+<a href="https://cftunnel.qt.cool" class="btn btn-outline" style="font-size:.85rem;margin-left:10px" target="_blank" rel="noopener">产品主页</a>
+</p>
 </div>
 </section>
 

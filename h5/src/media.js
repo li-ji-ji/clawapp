@@ -1,5 +1,5 @@
-const MAX_SIZE = 4 * 1024 * 1024
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+const MAX_SIZE = 5 * 1024 * 1024
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif']
 
 let _attachments = []
 let _previewBar = null
@@ -23,7 +23,7 @@ function handleFiles(files) {
   Array.from(files).forEach(file => {
     if (!ALLOWED_TYPES.includes(file.type)) return
     if (file.size > MAX_SIZE) {
-      alert(`图片 ${file.name} 超过 4MB 限制`)
+      alert(`图片 ${file.name} 超过 5MB 限制`)
       return
     }
     readFileAsBase64(file).then(data => {

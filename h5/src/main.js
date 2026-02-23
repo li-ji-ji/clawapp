@@ -3,6 +3,7 @@ import { wsClient } from './ws-client.js'
 import { createChatPage, initChatUI, setSessionKey, loadHistory } from './chat-ui.js'
 import { initI18n, t, onLangChange } from './i18n.js'
 import { initTheme } from './theme.js'
+import { initOfflineHandler } from './offline-queue.js'
 
 const STORAGE_KEY = 'clawapp-config'
 const GUIDE_KEY = 'clawapp-guide-shown'
@@ -106,6 +107,9 @@ function initApp() {
   })
 
   tokenInput.onkeydown = (e) => { if (e.key === 'Enter') connectBtn.click() }
+
+  // 初始化离线队列处理
+  initOfflineHandler()
 
   // 注册 Gateway 就绪回调 - 每次连接/重连都会触发
   wsClient.onReady((hello, sessionKey) => {

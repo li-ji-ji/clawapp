@@ -127,8 +127,11 @@ function inlineFormat(text) {
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/__(.+?)__/g, '<strong>$1</strong>')
     .replace(/_(.+?)_/g, '<em>$1</em>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="msg-img" />')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+      const safe = /^https?:|^mailto:/i.test(url.trim()) ? url : '#'
+      return `<a href="${safe}" target="_blank" rel="noopener">${label}</a>`
+    })
 }
 
 window.__copyCode = function(btn) {
