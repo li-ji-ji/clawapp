@@ -22,6 +22,7 @@
   --radius-md: 14px;
   --radius-lg: 20px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
   --header-h: 52px;
   --input-h: 56px;
 }
@@ -237,11 +238,11 @@ html, body {
 }
 
 .chat-header {
-  height: var(--header-h);
+  height: calc(var(--header-h) + var(--safe-top));
+  padding: var(--safe-top) 16px 0;
   background: var(--bg-secondary);
   display: flex;
   align-items: center;
-  padding: 0 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   gap: 10px;
@@ -497,7 +498,7 @@ html, body {
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
   padding: 8px 10px;
-  padding-bottom: calc(8px + var(--safe-bottom));
+  padding-bottom: max(8px, var(--safe-bottom));
   display: flex;
   align-items: flex-end;
   gap: 6px;
