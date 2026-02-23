@@ -3,6 +3,12 @@ name: Docker Image CI/CD
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: '手动指定镜像 Tag (可选)'
+        required: false
+        default: 'manual-build'
 
 jobs:
   build-and-push:
