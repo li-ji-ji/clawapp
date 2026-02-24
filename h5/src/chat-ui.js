@@ -1,4 +1,4 @@
-import { wsClient, uuid } from './ws-client.js'
+import { wsClient, uuid } from './api-client.js'
 import { renderMarkdown } from './markdown.js'
 import { initMedia, pickImage, getAttachments, clearAttachments, hasAttachments, showLightbox } from './media.js'
 import { initCommands, showCommands } from './commands.js'
@@ -24,6 +24,7 @@ let _currentRunId = null
 let _lastHistoryHash = ''  // 防止重连时重复渲染
 let _toolCards = new Map()
 let _onSettingsCallback = null
+let _streamSafetyTimer = null // 流式安全超时
 let _renderTimer = null    // 节流渲染定时器
 let _renderPending = false // 是否有待渲染
 const RENDER_THROTTLE = 30 // 渲染节流间隔 ms
@@ -396,8 +397,25 @@ function handleAgentEvent(payload) {
   const { runId, stream, data } = payload
 
   if (stream === 'lifecycle') {
-    if (data?.phase === 'start') { _currentRunId = runId; showTyping(true); _isStreaming = true; updateSendState() }
-    if (data?.phase === 'end') { showTyping(false); _isStreaming = false; updateSendState(); processMessageQueue() }
+    if (data?.phase === 'start') {
+      _currentRunId = runId; showTyping(true); _isStreaming = true; updateSendState()
+      // 安全超时：如果 60s 内没有 chat final / lifecycle end，强制重置
+      clearTimeout(_streamSafetyTimer)
+      _streamSafetyTimer = setTimeout(() => {
+        if (_isStreaming) { console.warn('[chat] 流式安全超时，强制重置'); resetStreamState() }
+      }, 60000)
+    }
+    if (data?.phase === 'end') {
+      showTyping(false)
+      clearTimeout(_streamSafetyTimer)
+      // 如果有活跃气泡内容，说明这是最后一个 run，需要彻底清理
+      if (_currentAiBubble && (_currentAiText || _currentAiImages.length)) {
+        resetStreamState()
+      } else {
+        _isStreaming = false; updateSendState()
+      }
+      processMessageQueue()
+    }
     return
   }
 
@@ -439,6 +457,7 @@ function handleAgentEvent(payload) {
 }
 
 function resetStreamState() {
+  clearTimeout(_streamSafetyTimer)
   // 最后一次渲染确保完整
   if (_currentAiBubble && (_currentAiText || _currentAiImages.length)) {
     _currentAiBubble.innerHTML = renderMarkdown(_currentAiText)

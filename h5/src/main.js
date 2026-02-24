@@ -1,5 +1,5 @@
 import './style.css'
-import { wsClient } from './ws-client.js'
+import { wsClient } from './api-client.js'
 import { createChatPage, initChatUI, setSessionKey, loadHistory } from './chat-ui.js'
 import { initI18n, t, onLangChange } from './i18n.js'
 import { initTheme } from './theme.js'
