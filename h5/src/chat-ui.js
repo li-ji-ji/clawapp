@@ -1,4 +1,4 @@
-import { wsClient, uuid } from './ws-client.js'
+import { wsClient, uuid } from './api-client.js'
 import { renderMarkdown } from './markdown.js'
 import { initMedia, pickImage, getAttachments, clearAttachments, hasAttachments, showLightbox } from './media.js'
 import { initCommands, showCommands } from './commands.js'
@@ -24,6 +24,7 @@ let _currentRunId = null
 let _lastHistoryHash = ''  // 防止重连时重复渲染
 let _toolCards = new Map()
 let _onSettingsCallback = null
+let _streamSafetyTimer = null // 流式安全超时
 let _renderTimer = null    // 节流渲染定时器
 let _renderPending = false // 是否有待渲染
 const RENDER_THROTTLE = 30 // 渲染节流间隔 ms
@@ -381,8 +382,16 @@ function handleChatEvent(payload) {
   }
 
   if (state === 'error') {
+    const errMsg = payload.errorMessage || '未知错误'
+    // 流式进行中（lifecycle start 已触发），Gateway 可能自动重试
+    if (_isStreaming) {
+      console.warn('[chat] 流式中临时错误，等待 Gateway 重试:', errMsg)
+      appendTransientWarning(`⚠ ${errMsg}`)
+      return
+    }
+    // 非流式状态，终态错误
     showTyping(false)
-    appendSystemMessage(`错误: ${payload.errorMessage || '未知错误'}`)
+    appendSystemMessage(`错误: ${errMsg}`)
     resetStreamState()
     processMessageQueue()
     return
@@ -396,8 +405,26 @@ function handleAgentEvent(payload) {
   const { runId, stream, data } = payload
 
   if (stream === 'lifecycle') {
-    if (data?.phase === 'start') { _currentRunId = runId; showTyping(true); _isStreaming = true; updateSendState() }
-    if (data?.phase === 'end') { showTyping(false); _isStreaming = false; updateSendState(); processMessageQueue() }
+    if (data?.phase === 'start') {
+      _currentRunId = runId; showTyping(true); _isStreaming = true; updateSendState()
+      clearTransientWarnings()
+      // 安全超时：如果 60s 内没有 chat final / lifecycle end，强制重置
+      clearTimeout(_streamSafetyTimer)
+      _streamSafetyTimer = setTimeout(() => {
+        if (_isStreaming) { console.warn('[chat] 流式安全超时，强制重置'); resetStreamState() }
+      }, 60000)
+    }
+    if (data?.phase === 'end') {
+      showTyping(false)
+      clearTimeout(_streamSafetyTimer)
+      // 如果有活跃气泡内容，说明这是最后一个 run，需要彻底清理
+      if (_currentAiBubble && (_currentAiText || _currentAiImages.length)) {
+        resetStreamState()
+      } else {
+        _isStreaming = false; updateSendState()
+      }
+      processMessageQueue()
+    }
     return
   }
 
@@ -408,6 +435,7 @@ function handleAgentEvent(payload) {
       const cleaned = stripThinkingTags(text)
       if (cleaned && cleaned.length > _currentAiText.length) {
         showTyping(false)
+        clearTransientWarnings()
         if (!_currentAiBubble) { _currentAiBubble = createAiBubble(); _currentRunId = runId }
         _currentAiText = cleaned
         throttledRender()
@@ -439,6 +467,7 @@ function handleAgentEvent(payload) {
 }
 
 function resetStreamState() {
+  clearTimeout(_streamSafetyTimer)
   // 最后一次渲染确保完整
   if (_currentAiBubble && (_currentAiText || _currentAiImages.length)) {
     _currentAiBubble.innerHTML = renderMarkdown(_currentAiText)
@@ -590,6 +619,26 @@ function appendSystemMessage(text) {
   el.textContent = text
   _messagesEl.insertBefore(el, _typingEl)
   scrollToBottom()
+}
+
+/** 显示可自动消失的临时警告（流式恢复后淡出） */
+function appendTransientWarning(text) {
+  const el = document.createElement('div')
+  el.className = 'system-msg transient-warning'
+  el.textContent = text
+  _messagesEl.insertBefore(el, _typingEl)
+  scrollToBottom()
+  return el
+}
+
+/** 清除所有临时警告（流式恢复时调用） */
+function clearTransientWarnings() {
+  const warnings = _messagesEl.querySelectorAll('.transient-warning')
+  warnings.forEach(el => {
+    el.style.transition = 'opacity 0.5s'
+    el.style.opacity = '0'
+    setTimeout(() => el.remove(), 500)
+  })
 }
 
 function showTyping(show) {

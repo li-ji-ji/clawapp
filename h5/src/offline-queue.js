@@ -5,7 +5,7 @@
  * - 消息发送状态追踪
  */
 
-import { wsClient, uuid } from './ws-client.js'
+import { wsClient, uuid } from './api-client.js'
 import { saveMessage, saveMessages, getLocalMessages, clearSessionMessages } from './message-db.js'
 
 const OFFLINE_QUEUE_KEY = 'clawapp-offline-queue'
