@@ -1,0 +1,133 @@
+name: Build Desktop Apps
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (如 1.0.0)'
+        required: true
+        default: '1.0.0'
+      create_release:
+        description: '是否创建 GitHub Release'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          cd h5 && npm ci
+          cd ../electron && npm ci
+
+      - name: Build H5
+        run: cd h5 && npx vite build
+
+      - name: Build Windows exe
+        run: cd electron && npx electron-builder --win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rename artifacts
+        shell: bash
+        run: |
+          VER="${VERSION#v}"
+          EXE=$(find electron/release -name '*.exe' | head -1)
+          [ -n "$EXE" ] && cp "$EXE" "electron/release/clawapp-${VER}-win-setup.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawapp-${{ env.VERSION }}-windows
+          path: electron/release/clawapp-*-win-setup.exe
+
+  build-macos:
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          cd h5 && npm ci
+          cd ../electron && npm ci
+
+      - name: Build H5
+        run: cd h5 && npx vite build
+
+      - name: Build macOS dmg
+        run: cd electron && npx electron-builder --mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rename artifacts
+        run: |
+          VER="${VERSION#v}"
+          DMG=$(find electron/release -name '*.dmg' | head -1)
+          [ -n "$DMG" ] && cp "$DMG" "electron/release/clawapp-${VER}-mac.dmg"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawapp-${{ env.VERSION }}-macos
+          path: electron/release/clawapp-*-mac.dmg
+
+  build-linux:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          cd h5 && npm ci
+          cd ../electron && npm ci
+
+      - name: Build H5
+        run: cd h5 && npx vite build
+
+      - name: Build Linux AppImage
+        run: cd electron && npx electron-builder --linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rename artifacts
+        run: |
+          VER="${VERSION#v}"
+          AI=$(find electron/release -name '*.AppImage' | head -1)
+          [ -n "$AI" ] && cp "$AI" "electron/release/clawapp-${VER}-linux.AppImage"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawapp-${{ env.VERSION }}-linux
+          path: electron/release/clawapp-*-linux.AppImage

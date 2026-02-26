@@ -19,6 +19,21 @@ export function uuid() {
 const REQUEST_TIMEOUT = 30000
 const MAX_RECONNECT_DELAY = 30000
 
+/**
+ * 智能推断 baseUrl 协议：
+ * - 已带 http:// 或 https:// → 直接使用
+ * - IP 地址 / localhost → http
+ * - 域名 → https
+ */
+function resolveBaseUrl(host) {
+  if (/^https?:\/\//i.test(host)) return host.replace(/\/+$/, '')
+  const hostOnly = host.split(':')[0]
+  const isIP = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostOnly)
+  const isLocal = hostOnly === 'localhost' || hostOnly === '127.0.0.1'
+  const protocol = (isIP || isLocal) ? 'http' : 'https'
+  return `${protocol}://${host}`
+}
+
 export class WsClient {
   constructor() {
     this._host = ''
@@ -62,7 +77,7 @@ export class WsClient {
   async connect(host, token) {
     this._host = host
     this._token = token
-    this._baseUrl = `${location.protocol}//${host}`
+    this._baseUrl = resolveBaseUrl(host)
     this._intentionalClose = false
     this._setConnected(false, 'connecting')
 

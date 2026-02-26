@@ -16,3 +16,7 @@ android/app/release.keystore
 # IDE
 .idea/
 *.iml
+
+# Electron build outputs
+electron/release/
+electron/node_modules/
