@@ -39,9 +39,7 @@ jobs:
         run: cd h5 && npx vite build
 
       - name: Build Windows exe
-        run: cd electron && npx electron-builder --win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd electron && npx electron-builder --win --publish never
 
       - name: Rename artifacts
         shell: bash
@@ -78,9 +76,7 @@ jobs:
         run: cd h5 && npx vite build
 
       - name: Build macOS dmg
-        run: cd electron && npx electron-builder --mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd electron && npx electron-builder --mac --publish never
 
       - name: Rename artifacts
         run: |
@@ -116,9 +112,7 @@ jobs:
         run: cd h5 && npx vite build
 
       - name: Build Linux AppImage
-        run: cd electron && npx electron-builder --linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd electron && npx electron-builder --linux --publish never
 
       - name: Rename artifacts
         run: |

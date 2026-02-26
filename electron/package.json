@@ -6,6 +6,10 @@
   "main": "main.js",
   "author": "武汉晴辰天下网络科技有限公司 <contact@qingchencloud.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qingchencloud/clawapp.git"
+  },
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win",
