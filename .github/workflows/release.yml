@@ -1,0 +1,256 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (如 1.0.0)'
+        required: true
+        default: '1.0.0'
+      create_release:
+        description: '是否创建 GitHub Release'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd h5 && npm ci
+
+      - name: Build H5
+        run: npm run build:h5
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build APK (Debug)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Build APK (Release)
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          cd android
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$PWD/app/release.keystore \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD
+
+      - name: Rename APK files
+        run: |
+          VER="${VERSION#v}"
+          DEBUG_APK=$(find android/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          [ -n "$DEBUG_APK" ] && cp "$DEBUG_APK" "android/app/build/outputs/apk/debug/clawapp-${VER}-debug.apk"
+          RELEASE_APK=$(find android/app/build/outputs/apk/release -name '*.apk' 2>/dev/null | head -1)
+          [ -n "$RELEASE_APK" ] && cp "$RELEASE_APK" "android/app/build/outputs/apk/release/clawapp-${VER}-release.apk"
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawapp-debug-apk
+          path: android/app/build/outputs/apk/debug/clawapp-*-debug.apk
+
+      - name: Upload Release APK
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawapp-release-apk
+          path: android/app/build/outputs/apk/release/clawapp-*-release.apk
+
+  build-windows:
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          cd h5 && npm ci
+          cd ../electron && npm ci
+
+      - name: Build H5
+        run: cd h5 && npx vite build
+
+      - name: Build Windows exe
+        run: cd electron && npx electron-builder --win --publish never
+
+      - name: Rename artifacts
+        shell: bash
+        run: |
+          VER="${VERSION#v}"
+          EXE=$(find electron/release -name '*.exe' | head -1)
+          [ -n "$EXE" ] && cp "$EXE" "electron/release/clawapp-${VER}-win-setup.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawapp-windows
+          path: electron/release/clawapp-*-win-setup.exe
+
+  build-macos:
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          cd h5 && npm ci
+          cd ../electron && npm ci
+
+      - name: Build H5
+        run: cd h5 && npx vite build
+
+      - name: Build macOS dmg
+        run: cd electron && npx electron-builder --mac --publish never
+
+      - name: Rename artifacts
+        run: |
+          VER="${VERSION#v}"
+          DMG=$(find electron/release -name '*.dmg' | head -1)
+          [ -n "$DMG" ] && cp "$DMG" "electron/release/clawapp-${VER}-mac.dmg"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawapp-macos
+          path: electron/release/clawapp-*-mac.dmg
+
+  build-linux:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          cd h5 && npm ci
+          cd ../electron && npm ci
+
+      - name: Build H5
+        run: cd h5 && npx vite build
+
+      - name: Build Linux AppImage
+        run: cd electron && npx electron-builder --linux --publish never
+
+      - name: Rename artifacts
+        run: |
+          VER="${VERSION#v}"
+          AI=$(find electron/release -name '*.AppImage' | head -1)
+          [ -n "$AI" ] && cp "$AI" "electron/release/clawapp-${VER}-linux.AppImage"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clawapp-linux
+          path: electron/release/clawapp-*-linux.AppImage
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
+    needs: [build-android, build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f | head -50
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', github.event.inputs.version) }}
+          name: ClawApp ${{ env.VERSION }}
+          body: |
+            ## ClawApp ${{ env.VERSION }}
+
+            ### 下载
+
+            | 平台 | 文件 | 说明 |
+            |------|------|------|
+            | Android | `clawapp-*-debug.apk` | Debug 版本，无需签名 |
+            | Windows | `clawapp-*-win-setup.exe` | Windows 安装包 |
+            | macOS | `clawapp-*-mac.dmg` | macOS 磁盘映像 |
+            | Linux | `clawapp-*-linux.AppImage` | Linux 免安装运行 |
+
+            ### 使用方式
+            1. 下载对应平台的安装包
+            2. 安装并打开 ClawApp
+            3. 输入服务器地址和 Token 即可连接
+
+            ### 相关链接
+            - [使用文档](https://github.com/qingchencloud/clawapp#readme)
+            - [产品主页](https://clawapp.qt.cool)
+          files: |
+            artifacts/clawapp-debug-apk/*
+            artifacts/clawapp-release-apk/*
+            artifacts/clawapp-windows/*
+            artifacts/clawapp-macos/*
+            artifacts/clawapp-linux/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
