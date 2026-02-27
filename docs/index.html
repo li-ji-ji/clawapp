@@ -211,6 +211,7 @@ ClawApp
 <div class="topnav-links">
 <a href="#features" class="hide-mobile">功能</a>
 <a href="#quickstart" class="hide-mobile">部署</a>
+<a href="#connection" class="hide-mobile">连接配置</a>
 <a href="#download" class="hide-mobile">下载</a>
 <a href="#community">社区</a>
 <a href="https://discord.gg/U9AttmsNHh" target="_blank" rel="noopener">Discord</a>
@@ -501,6 +502,76 @@ cftunnel GitHub
 </a>
 <a href="https://cftunnel.qt.cool" class="btn btn-outline" style="font-size:.85rem;margin-left:10px" target="_blank" rel="noopener">产品主页</a>
 </p>
+</div>
+</section>
+
+<!-- 连接配置 -->
+<section id="connection">
+<div class="container">
+<div class="section-title fade-in">
+<h2>连接配置</h2>
+<p>App 登录页需要填写服务器地址和 Token，这里教你怎么获取</p>
+</div>
+<div class="features fade-in" style="grid-template-columns:repeat(3,1fr)">
+
+<div class="feature-card">
+<div class="icon"><svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></div>
+<h3>① 服务器地址</h3>
+<p style="margin-bottom:12px">填运行 ClawApp Server 的电脑 IP + 端口</p>
+<div style="color:var(--text2);font-size:.86rem;line-height:2">
+<p><span style="color:var(--accent);font-weight:600">局域网</span> — <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.82rem">电脑IP:3210</code></p>
+<p><span style="color:var(--accent);font-weight:600">外网</span> — cftunnel 生成的域名</p>
+<p><span style="color:var(--accent);font-weight:600">本机</span> — <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.82rem">localhost:3210</code></p>
+</div>
+<div class="code-wrapper" style="margin-top:14px;border:1px solid var(--border)">
+<div class="code-block active" style="display:block;border-radius:var(--radius-sm);font-size:.82rem;padding:12px 14px"><button class="copy-btn" onclick="copyCode(this)">复制</button># 查看电脑局域网 IP
+# Mac
+ifconfig | grep "inet " | grep -v 127
+# Windows: ipconfig
+# Linux: ip addr</div>
+</div>
+<p style="color:var(--text3);font-size:.82rem;margin-top:10px">例如 <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.8rem">192.168.1.100:3210</code></p>
+</div>
+
+<div class="feature-card">
+<div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+<h3>② App 登录 Token</h3>
+<p style="margin-bottom:12px">这是你部署时<span style="color:var(--text);font-weight:600">自己设置</span>的访问密码</p>
+<div style="color:var(--text2);font-size:.86rem;line-height:2">
+<p><span style="color:var(--accent);font-weight:600">一键脚本</span> — 安装时引导设置</p>
+<p><span style="color:var(--accent);font-weight:600">手动部署</span> — 在 .env 中自定义</p>
+<p><span style="color:var(--accent);font-weight:600">忘记了？</span> — 查看配置文件 ↓</p>
+</div>
+<div class="code-wrapper" style="margin-top:14px;border:1px solid var(--border)">
+<div class="code-block active" style="display:block;border-radius:var(--radius-sm);font-size:.82rem;padding:12px 14px"><button class="copy-btn" onclick="copyCode(this)">复制</button># 查看你设置的 Token
+cat server/.env | grep PROXY_TOKEN
+
+# 或者重新设一个
+# PROXY_TOKEN=my-secret-123</div>
+</div>
+<p style="color:var(--text3);font-size:.82rem;margin-top:10px">自己设什么，App 里就填什么</p>
+</div>
+
+<div class="feature-card">
+<div class="icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+<h3>③ Gateway Token</h3>
+<p style="margin-bottom:12px">从 OpenClaw 配置文件中获取，<span style="color:var(--text);font-weight:600">非自定义</span></p>
+<div style="color:var(--text2);font-size:.86rem;line-height:2">
+<p><span style="color:var(--accent);font-weight:600">一键脚本</span> — 自动读取，无需操心</p>
+<p><span style="color:var(--accent);font-weight:600">手动部署</span> — 需手动查找 ↓</p>
+<p><span style="color:var(--accent);font-weight:600">注意</span> — 和 App Token 是两个值</p>
+</div>
+<div class="code-wrapper" style="margin-top:14px;border:1px solid var(--border)">
+<div class="code-block active" style="display:block;border-radius:var(--radius-sm);font-size:.82rem;padding:12px 14px"><button class="copy-btn" onclick="copyCode(this)">复制</button># 从 OpenClaw 配置中获取
+cat ~/.openclaw/openclaw.json \
+  | grep token
+
+# 找到 gateway.auth.token 的值</div>
+</div>
+<p style="color:var(--text3);font-size:.82rem;margin-top:10px">填入 .env 的 OPENCLAW_GATEWAY_TOKEN</p>
+</div>
+
+</div>
 </div>
 </section>
 
