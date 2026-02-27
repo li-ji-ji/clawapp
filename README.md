@@ -19,8 +19,10 @@
 <p align="center">
   <a href="https://clawapp.qt.cool">🌐 产品主页</a> •
   <a href="https://github.com/1186258278/OpenClawChineseTranslation">🇨🇳 OpenClaw 中文汉化版</a> •
-  <a href="https://discord.com/invite/U9AttmsNHh">💬 Discord</a> •
-  <a href="https://yb.tencent.com/gp/i/LsvIw7mdR7Lb">🤖 元宝派</a>
+  <a href="https://discord.gg/U9AttmsNHh">💬 Discord</a> •
+  <a href="https://yb.tencent.com/gp/i/LsvIw7mdR7Lb">🤖 元宝派</a> •
+  <a href="https://qt.cool/c/OpenClaw">💬 QQ 群</a> •
+  <a href="https://qt.cool/c/OpenClawWx">💬 微信群</a>
 </p>
 
 ---
@@ -287,12 +289,78 @@ server {
 
 <h2 id="connection">连接说明</h2>
 
-打开 H5 页面后会看到连接设置页：
+打开 H5 页面后会看到连接设置页，需要填写两个字段：
 
-| 字段 | 填什么 | 示例 |
-|------|--------|------|
-| 服务器地址 | 代理服务端的地址和端口 | `192.168.1.100:3210`（局域网）或 `服务器IP:3210`（外网） |
-| Token | `.env` 里设置的 `PROXY_TOKEN` | `my-secret-token-123` |
+### 服务器地址
+
+填写运行 ClawApp Server 的电脑 IP 和端口。
+
+**局域网访问**（手机和电脑同一 WiFi）：
+```bash
+# 查看电脑 IP
+# Mac
+ifconfig | grep "inet " | grep -v 127.0.0.1
+# Windows
+ipconfig
+# Linux
+ip addr
+```
+然后在 App 中填入 `你的电脑IP:3210`，例如 `192.168.1.100:3210`
+
+**外网访问**：填入公网地址，例如 `你的服务器IP:3210` 或 cftunnel 生成的域名 `xxx-yyy.trycloudflare.com`
+
+**本机访问**：直接填 `localhost:3210`
+
+### Token 获取
+
+App 登录页的 Token 是你在部署时自己设置的 `PROXY_TOKEN`，相当于访问密码。
+
+#### 1. 如果用一键脚本部署
+
+脚本会交互式引导你设置 Token，设置完后记住即可。如果忘了，查看配置文件：
+```bash
+cat server/.env | grep PROXY_TOKEN
+```
+
+#### 2. 如果手动部署 / Docker 部署
+
+Token 在 `.env`（Docker）或 `server/.env`（手动部署）文件中配置：
+
+```bash
+# 这个是 App 登录密码，自己随便设一个
+PROXY_TOKEN=my-secret-token-123
+
+# 这个是 OpenClaw Gateway 的认证 Token（见下方获取方式）
+OPENCLAW_GATEWAY_TOKEN=你的gateway-token
+```
+
+`PROXY_TOKEN` 是你自己定义的密码，设什么 App 里就填什么。
+
+#### 3. OPENCLAW_GATEWAY_TOKEN 怎么获取
+
+这个 Token 在 OpenClaw 的配置文件 `~/.openclaw/openclaw.json` 中（JSON5 格式）：
+
+```bash
+# 查看 Gateway Token
+cat ~/.openclaw/openclaw.json | grep token
+```
+
+在配置文件中找到类似这样的结构：
+```json5
+{
+  gateway: {
+    port: 18789,
+    auth: {
+      mode: "token",
+      token: "你的-gateway-token"  // ← 复制这个值
+    }
+  }
+}
+```
+
+把 `gateway.auth.token` 的值复制到 `.env` 的 `OPENCLAW_GATEWAY_TOKEN` 中即可。
+
+> 💡 `PROXY_TOKEN`（App 登录密码）和 `OPENCLAW_GATEWAY_TOKEN`（Gateway 认证）是两个不同的 Token。前者自己设，后者从 OpenClaw 配置中获取。
 
 > 💡 通过 HTTPS 访问时（如 Cloudflare Tunnel），WebSocket 会自动切换为 WSS 加密连接。
 
@@ -519,14 +587,37 @@ ssh -f -N -L 127.0.0.1:18789:127.0.0.1:18789 user@你的电脑IP
 
 欢迎加入社区，交流使用心得、反馈问题、获取最新动态：
 
-<table align="center">
-  <tr>
-    <td align="center"><img src="docs/image/qq.jpg" width="200" alt="QQ 群" /><br/><sub>QQ 群</sub></td>
-    <td align="center"><img src="docs/image/wx.jpg" width="200" alt="微信群" /><br/><sub>微信群</sub></td>
-  </tr>
-</table>
+<p align="center">
+  <a href="https://discord.gg/U9AttmsNHh"><img src="https://img.shields.io/badge/Discord-加入社区-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  &nbsp;
+  <a href="https://yb.tencent.com/gp/i/LsvIw7mdR7Lb"><img src="https://img.shields.io/badge/元宝派-加入圈子-FF6A00?style=for-the-badge&logo=tencent-qq&logoColor=white" alt="元宝派"></a>
+  &nbsp;
+  <a href="https://qt.cool/c/OpenClaw"><img src="https://img.shields.io/badge/QQ群-加入交流-12B7F5?style=for-the-badge&logo=tencent-qq&logoColor=white" alt="QQ群"></a>
+  &nbsp;
+  <a href="https://qt.cool/c/OpenClawWx"><img src="https://img.shields.io/badge/微信群-加入交流-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="微信群"></a>
+</p>
 
-- 🎮 [Discord 社区](https://discord.com/invite/U9AttmsNHh) — 国际交流频道
+### QQ 交流群
+
+<p align="center">
+    <img src="docs/image/OpenClaw-QQ.png" alt="QQ交流群" width="200px">
+</p>
+<p align="center">
+  <em>扫码或 <a href="https://qt.cool/c/OpenClaw">点击链接</a> 加入 | 2000 人大群，满员自动切换</em>
+</p>
+
+### 微信交流群
+
+<p align="center">
+  <a href="https://qt.cool/c/OpenClawWx">
+    <img src="docs/image/OpenClawWx.png" alt="微信交流群" width="200px">
+  </a>
+</p>
+<p align="center">
+  <em>扫码或 <a href="https://qt.cool/c/OpenClawWx">点击链接</a> 加入 | 碰到问题也可以直接在群内反馈</em>
+</p>
+
+- 🎮 [Discord 社区](https://discord.gg/U9AttmsNHh) — 国际交流频道
 - 🤖 [元宝派社群圈子](https://yb.tencent.com/gp/i/LsvIw7mdR7Lb) — 腾讯元宝派讨论区
 
 ---

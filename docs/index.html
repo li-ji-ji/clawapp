@@ -134,6 +134,10 @@ section{padding:100px 0}
 .features{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
 @media(max-width:960px){.features{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:580px){.features{grid-template-columns:1fr}}
+.connection-cards{grid-template-columns:repeat(3,1fr)}
+@media(max-width:960px){.connection-cards{grid-template-columns:1fr}}
+.connection-cards .code-wrapper{max-width:100%}
+.connection-cards .code-block{font-size:.78rem;padding:10px 12px;white-space:pre-wrap;word-break:break-all}
 .feature-card{position:relative;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 24px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease;overflow:hidden}
 .feature-card::before{content:'';position:absolute;inset:0;border-radius:var(--radius);background:linear-gradient(135deg,rgba(233,69,96,.06),transparent 60%);opacity:0;transition:opacity .25s}
 .feature-card:hover{transform:translateY(-4px);border-color:var(--border-hover);box-shadow:var(--glow)}
@@ -211,9 +215,10 @@ ClawApp
 <div class="topnav-links">
 <a href="#features" class="hide-mobile">功能</a>
 <a href="#quickstart" class="hide-mobile">部署</a>
+<a href="#connection" class="hide-mobile">连接配置</a>
 <a href="#download" class="hide-mobile">下载</a>
 <a href="#community">社区</a>
-<a href="https://discord.com/invite/U9AttmsNHh" target="_blank" rel="noopener">Discord</a>
+<a href="https://discord.gg/U9AttmsNHh" target="_blank" rel="noopener">Discord</a>
 <a href="https://github.com/qingchencloud/clawapp" target="_blank" rel="noopener">
 <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-3px"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
 </a>
@@ -504,6 +509,76 @@ cftunnel GitHub
 </div>
 </section>
 
+<!-- 连接配置 -->
+<section id="connection">
+<div class="container">
+<div class="section-title fade-in">
+<h2>连接配置</h2>
+<p>App 登录页需要填写服务器地址和 Token，这里教你怎么获取</p>
+</div>
+<div class="features fade-in connection-cards">
+
+<div class="feature-card">
+<div class="icon"><svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></div>
+<h3>① 服务器地址</h3>
+<p style="margin-bottom:12px">填运行 ClawApp Server 的电脑 IP + 端口</p>
+<div style="color:var(--text2);font-size:.86rem;line-height:2">
+<p><span style="color:var(--accent);font-weight:600">局域网</span> — <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.82rem">电脑IP:3210</code></p>
+<p><span style="color:var(--accent);font-weight:600">外网</span> — cftunnel 生成的域名</p>
+<p><span style="color:var(--accent);font-weight:600">本机</span> — <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.82rem">localhost:3210</code></p>
+</div>
+<div class="code-wrapper" style="margin-top:14px;border:1px solid var(--border)">
+<div class="code-block active" style="display:block;border-radius:var(--radius-sm);font-size:.82rem;padding:12px 14px"><button class="copy-btn" onclick="copyCode(this)">复制</button># 查看电脑局域网 IP
+# Mac
+ifconfig | grep "inet " | grep -v 127
+# Windows: ipconfig
+# Linux: ip addr</div>
+</div>
+<p style="color:var(--text3);font-size:.82rem;margin-top:10px">例如 <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.8rem">192.168.1.100:3210</code></p>
+</div>
+
+<div class="feature-card">
+<div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+<h3>② App 登录 Token</h3>
+<p style="margin-bottom:12px">这是你部署时<span style="color:var(--text);font-weight:600">自己设置</span>的访问密码</p>
+<div style="color:var(--text2);font-size:.86rem;line-height:2">
+<p><span style="color:var(--accent);font-weight:600">一键脚本</span> — 安装时引导设置</p>
+<p><span style="color:var(--accent);font-weight:600">手动部署</span> — 在 .env 中自定义</p>
+<p><span style="color:var(--accent);font-weight:600">忘记了？</span> — 查看配置文件 ↓</p>
+</div>
+<div class="code-wrapper" style="margin-top:14px;border:1px solid var(--border)">
+<div class="code-block active" style="display:block;border-radius:var(--radius-sm);font-size:.82rem;padding:12px 14px"><button class="copy-btn" onclick="copyCode(this)">复制</button># 查看你设置的 Token
+cat server/.env | grep PROXY_TOKEN
+
+# 或者重新设一个
+# PROXY_TOKEN=my-secret-123</div>
+</div>
+<p style="color:var(--text3);font-size:.82rem;margin-top:10px">自己设什么，App 里就填什么</p>
+</div>
+
+<div class="feature-card">
+<div class="icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+<h3>③ Gateway Token</h3>
+<p style="margin-bottom:12px">从 OpenClaw 配置文件中获取，<span style="color:var(--text);font-weight:600">非自定义</span></p>
+<div style="color:var(--text2);font-size:.86rem;line-height:2">
+<p><span style="color:var(--accent);font-weight:600">一键脚本</span> — 自动读取，无需操心</p>
+<p><span style="color:var(--accent);font-weight:600">手动部署</span> — 需手动查找 ↓</p>
+<p><span style="color:var(--accent);font-weight:600">注意</span> — 和 App Token 是两个值</p>
+</div>
+<div class="code-wrapper" style="margin-top:14px;border:1px solid var(--border)">
+<div class="code-block active" style="display:block;border-radius:var(--radius-sm);font-size:.82rem;padding:12px 14px"><button class="copy-btn" onclick="copyCode(this)">复制</button># 从 OpenClaw 配置中获取
+cat ~/.openclaw/openclaw.json \
+  | grep token
+
+# 找到 gateway.auth.token 的值</div>
+</div>
+<p style="color:var(--text3);font-size:.82rem;margin-top:10px">填入 .env 的 OPENCLAW_GATEWAY_TOKEN</p>
+</div>
+
+</div>
+</div>
+</section>
+
 <!-- 下载使用 -->
 <section id="download">
 <div class="container">
@@ -564,9 +639,20 @@ cftunnel GitHub
 </div>
 <div class="features fade-in" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
 <div class="feature-card" style="text-align:center">
-<img src="image/qq.jpg" alt="QQ 群二维码" style="width:160px;border-radius:12px;margin-bottom:12px" loading="lazy">
+<a href="https://qt.cool/c/OpenClaw" target="_blank" rel="noopener">
+<img src="image/OpenClaw-QQ.png" alt="QQ 群二维码" style="width:160px;border-radius:12px;margin-bottom:12px" loading="lazy">
+</a>
 <h3>QQ 群</h3>
-<p>扫码加入 QQ 交流群</p>
+<p>2000 人大群，满员自动切换</p>
+<a href="https://qt.cool/c/OpenClaw" class="btn btn-outline" style="font-size:.82rem;padding:6px 16px;margin-top:10px" target="_blank" rel="noopener">点击链接加入</a>
+</div>
+<div class="feature-card" style="text-align:center">
+<a href="https://qt.cool/c/OpenClawWx" target="_blank" rel="noopener">
+<img src="image/OpenClawWx.png" alt="微信群二维码" style="width:160px;border-radius:12px;margin-bottom:12px" loading="lazy">
+</a>
+<h3>微信群</h3>
+<p>扫码加入，问题随时反馈</p>
+<a href="https://qt.cool/c/OpenClawWx" class="btn btn-outline" style="font-size:.82rem;padding:6px 16px;margin-top:10px" target="_blank" rel="noopener">点击链接加入</a>
 </div>
 <div class="feature-card" style="text-align:center">
 <div class="icon" style="margin:0 auto 12px"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></div>
@@ -578,7 +664,7 @@ cftunnel GitHub
 <div class="icon" style="margin:0 auto 12px"><svg viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg></div>
 <h3>Discord</h3>
 <p>国际交流频道</p>
-<a href="https://discord.com/invite/U9AttmsNHh" class="btn btn-outline" style="font-size:.82rem;padding:6px 16px;margin-top:10px" target="_blank" rel="noopener">加入 Discord</a>
+<a href="https://discord.gg/U9AttmsNHh" class="btn btn-outline" style="font-size:.82rem;padding:6px 16px;margin-top:10px" target="_blank" rel="noopener">加入 Discord</a>
 </div>
 </div>
 </div>
@@ -590,7 +676,7 @@ cftunnel GitHub
 <a href="https://github.com/qingchencloud/clawapp">GitHub</a>
 <a href="https://qingchencloud.com">官网</a>
 <a href="https://qt.cool">qt.cool</a>
-<a href="https://discord.com/invite/U9AttmsNHh">Discord</a>
+<a href="https://discord.gg/U9AttmsNHh">Discord</a>
 </div>
 <div class="copyright">由 <a href="https://qingchencloud.com">武汉晴辰天下网络科技有限公司</a> 开发维护 · MIT License</div>
 <div class="icp"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">鄂ICP备2025164966号</a></div>
