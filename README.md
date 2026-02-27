@@ -19,8 +19,10 @@
 <p align="center">
   <a href="https://clawapp.qt.cool">🌐 产品主页</a> •
   <a href="https://github.com/1186258278/OpenClawChineseTranslation">🇨🇳 OpenClaw 中文汉化版</a> •
-  <a href="https://discord.com/invite/U9AttmsNHh">💬 Discord</a> •
-  <a href="https://yb.tencent.com/gp/i/LsvIw7mdR7Lb">🤖 元宝派</a>
+  <a href="https://discord.gg/U9AttmsNHh">💬 Discord</a> •
+  <a href="https://yb.tencent.com/gp/i/LsvIw7mdR7Lb">🤖 元宝派</a> •
+  <a href="https://qt.cool/c/OpenClaw">💬 QQ 群</a> •
+  <a href="https://qt.cool/c/OpenClawWx">💬 微信群</a>
 </p>
 
 ---
@@ -519,14 +521,37 @@ ssh -f -N -L 127.0.0.1:18789:127.0.0.1:18789 user@你的电脑IP
 
 欢迎加入社区，交流使用心得、反馈问题、获取最新动态：
 
-<table align="center">
-  <tr>
-    <td align="center"><img src="docs/image/qq.jpg" width="200" alt="QQ 群" /><br/><sub>QQ 群</sub></td>
-    <td align="center"><img src="docs/image/wx.jpg" width="200" alt="微信群" /><br/><sub>微信群</sub></td>
-  </tr>
-</table>
+<p align="center">
+  <a href="https://discord.gg/U9AttmsNHh"><img src="https://img.shields.io/badge/Discord-加入社区-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  &nbsp;
+  <a href="https://yb.tencent.com/gp/i/LsvIw7mdR7Lb"><img src="https://img.shields.io/badge/元宝派-加入圈子-FF6A00?style=for-the-badge&logo=tencent-qq&logoColor=white" alt="元宝派"></a>
+  &nbsp;
+  <a href="https://qt.cool/c/OpenClaw"><img src="https://img.shields.io/badge/QQ群-加入交流-12B7F5?style=for-the-badge&logo=tencent-qq&logoColor=white" alt="QQ群"></a>
+  &nbsp;
+  <a href="https://qt.cool/c/OpenClawWx"><img src="https://img.shields.io/badge/微信群-加入交流-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="微信群"></a>
+</p>
 
-- 🎮 [Discord 社区](https://discord.com/invite/U9AttmsNHh) — 国际交流频道
+### QQ 交流群
+
+<p align="center">
+    <img src="docs/image/OpenClaw-QQ.png" alt="QQ交流群" width="200px">
+</p>
+<p align="center">
+  <em>扫码或 <a href="https://qt.cool/c/OpenClaw">点击链接</a> 加入 | 2000 人大群，满员自动切换</em>
+</p>
+
+### 微信交流群
+
+<p align="center">
+  <a href="https://qt.cool/c/OpenClawWx">
+    <img src="docs/image/OpenClawWx.png" alt="微信交流群" width="200px">
+  </a>
+</p>
+<p align="center">
+  <em>扫码或 <a href="https://qt.cool/c/OpenClawWx">点击链接</a> 加入 | 碰到问题也可以直接在群内反馈</em>
+</p>
+
+- 🎮 [Discord 社区](https://discord.gg/U9AttmsNHh) — 国际交流频道
 - 🤖 [元宝派社群圈子](https://yb.tencent.com/gp/i/LsvIw7mdR7Lb) — 腾讯元宝派讨论区
 
 ---
