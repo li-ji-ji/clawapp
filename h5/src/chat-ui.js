@@ -1,6 +1,6 @@
 import { wsClient, uuid } from './api-client.js'
 import { renderMarkdown } from './markdown.js'
-import { initMedia, pickImage, getAttachments, clearAttachments, hasAttachments, showLightbox } from './media.js'
+import { initMedia, pickImage, pickMedia, getAttachments, clearAttachments, hasAttachments, showLightbox } from './media.js'
 import { initCommands, showCommands } from './commands.js'
 import { t, formatRelativeTime } from './i18n.js'
 import { initSettings, showSettings } from './settings.js'
@@ -14,12 +14,16 @@ let _textarea = null
 let _sendBtn = null
 let _previewBar = null
 let _sessionKey = ''
+let _serverSessionKey = ''
 let _isStreaming = false
 let _isSending = false     // chat.send 请求中
 let _messageQueue = []     // 消息队列（发送中时排队）
 let _currentAiBubble = null
 let _currentAiText = ''
 let _currentAiImages = []
+let _currentAiVideos = []
+let _currentAiAudios = []
+let _currentAiFiles = []
 let _currentRunId = null
 let _lastHistoryHash = ''  // 防止重连时重复渲染
 let _toolCards = new Map()
@@ -27,7 +31,14 @@ let _onSettingsCallback = null
 let _streamSafetyTimer = null // 流式安全超时
 let _renderTimer = null    // 节流渲染定时器
 let _renderPending = false // 是否有待渲染
+let _unsubEvent = null
+let _seenFinalRunIds = new Set()
+let _lastFinalSig = ''
+let _lastFinalAt = 0
+let _lastReconnectNoticeAt = 0
 const RENDER_THROTTLE = 30 // 渲染节流间隔 ms
+const FINAL_DUP_WINDOW_MS = 5000
+const RECONNECT_NOTICE_COOLDOWN_MS = 5000
 
 const SVG_SEND = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>`
 const SVG_ATTACH = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>`
@@ -39,23 +50,55 @@ const SVG_MIC = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" str
 let _recognition = null
 let _isRecording = false
 
-/** 从 OpenClaw 消息中提取可渲染内容（文本 + 图片） */
+/** 从 OpenClaw 消息中提取可渲染内容（文本 + 图片 + 视频 + 音频 + 文件） */
 function extractContent(message) {
   if (!message || typeof message !== 'object') return null
   const content = message.content
-  if (typeof content === 'string') return { text: stripThinkingTags(content), images: [] }
+  if (typeof content === 'string') return { text: stripThinkingTags(content), images: [], videos: [], audios: [], files: [] }
   if (Array.isArray(content)) {
-    const texts = [], images = []
+    const texts = [], images = [], videos = [], audios = [], files = []
     for (const block of content) {
-      if (block.type === 'text' && typeof block.text === 'string') texts.push(block.text)
-      else if (block.type === 'image' && block.data && !block.omitted) {
-        images.push({ mediaType: block.mimeType || 'image/png', data: block.data })
+      if (block.type === 'text' && typeof block.text === 'string') {
+        texts.push(block.text)
+      } else if (block.type === 'image' && !block.omitted) {
+        // base64 内嵌图片
+        if (block.data) {
+          images.push({ mediaType: block.mimeType || 'image/png', data: block.data })
+        } else if (block.source?.type === 'base64' && block.source.data) {
+          // Anthropic 格式
+          images.push({ mediaType: block.source.media_type || 'image/png', data: block.source.data })
+        } else if (block.url || block.source?.url) {
+          // URL 格式图片
+          images.push({ url: block.url || block.source.url, mediaType: block.mimeType || 'image/png' })
+        }
+      } else if (block.type === 'image_url' && block.image_url?.url) {
+        // OpenAI 格式
+        images.push({ url: block.image_url.url, mediaType: 'image/png' })
+      } else if (block.type === 'video') {
+        if (block.data) videos.push({ mediaType: block.mimeType || 'video/mp4', data: block.data })
+        else if (block.url) videos.push({ url: block.url, mediaType: block.mimeType || 'video/mp4' })
+      } else if (block.type === 'audio' || block.type === 'voice') {
+        if (block.data) audios.push({ mediaType: block.mimeType || 'audio/mpeg', data: block.data, duration: block.duration })
+        else if (block.url) audios.push({ url: block.url, mediaType: block.mimeType || 'audio/mpeg', duration: block.duration })
+      } else if (block.type === 'file' || block.type === 'document') {
+        files.push({ url: block.url || '', name: block.fileName || block.name || '文件', mimeType: block.mimeType || '', size: block.size, data: block.data })
       }
     }
+    // 从 mediaUrl/mediaUrls 提取（插件返回的媒体 URL）
+    const mediaUrls = message.mediaUrls || (message.mediaUrl ? [message.mediaUrl] : [])
+    for (const url of mediaUrls) {
+      if (!url) continue
+      if (/\.(mp4|webm|mov|mkv)(\?|$)/i.test(url)) videos.push({ url, mediaType: 'video/mp4' })
+      else if (/\.(mp3|wav|ogg|m4a|aac|flac)(\?|$)/i.test(url)) audios.push({ url, mediaType: 'audio/mpeg' })
+      else if (/\.(jpe?g|png|gif|webp|heic|svg)(\?|$)/i.test(url)) images.push({ url, mediaType: 'image/png' })
+      else files.push({ url, name: url.split('/').pop().split('?')[0] || '文件', mimeType: '' })
+    }
     const text = texts.length ? stripThinkingTags(texts.join('\n')) : ''
-    if (text || images.length) return { text, images }
+    if (text || images.length || videos.length || audios.length || files.length) {
+      return { text, images, videos, audios, files }
+    }
   }
-  if (typeof message.text === 'string') return { text: stripThinkingTags(message.text), images: [] }
+  if (typeof message.text === 'string') return { text: stripThinkingTags(message.text), images: [], videos: [], audios: [], files: [] }
   return null
 }
 
@@ -95,13 +138,16 @@ export function createChatPage() {
 }
 
 export function setSessionKey(key) {
-  // 优先恢复上次使用的会话
-  const saved = localStorage.getItem(STORAGE_SESSION_KEY)
-  if (saved && saved !== key) {
-    _sessionKey = saved
-  } else {
-    _sessionKey = key
+  // 记录服务端默认会话，但不要在重连时覆盖用户当前会话
+  _serverSessionKey = key || ''
+
+  // 仅在首次初始化（当前无会话）时设置 active session
+  if (!_sessionKey) {
+    const saved = localStorage.getItem(STORAGE_SESSION_KEY)
+    _sessionKey = saved || _serverSessionKey || ''
+    if (_sessionKey) localStorage.setItem(STORAGE_SESSION_KEY, _sessionKey)
   }
+
   updateSessionTitle()
 }
 export function getSessionKey() { return _sessionKey }
@@ -128,7 +174,7 @@ export function initChatUI(onSettings) {
   document.getElementById('settings-btn').onclick = () => showSettings()
   document.getElementById('session-title').onclick = () => showSessionPicker()
   document.getElementById('cmd-btn').onclick = () => showCommands()
-  document.getElementById('attach-btn').onclick = () => pickImage()
+  document.getElementById('attach-btn').onclick = () => pickMedia()
   _sendBtn.onclick = () => handleSendClick()
 
   _textarea.addEventListener('input', () => { autoResize(); updateSendState() })
@@ -150,7 +196,8 @@ export function initChatUI(onSettings) {
     else { _textarea.value = cmd; sendMessage() }
   })
 
-  wsClient.onEvent(handleEvent)
+  if (_unsubEvent) _unsubEvent()
+  _unsubEvent = wsClient.onEvent(handleEvent)
   wsClient.onStatusChange(status => {
     const dot = document.getElementById('status-dot')
     dot.className = 'status-dot'
@@ -160,6 +207,7 @@ export function initChatUI(onSettings) {
     } else if (status === 'connecting' || status === 'reconnecting') {
       dot.classList.add('connecting')
       showDisconnectBanner(true)
+      notifyReconnectingSession()
     } else if (status === 'disconnected') {
       showDisconnectBanner(false)
     }
@@ -192,8 +240,8 @@ function toggleVoiceInput(SR) {
     micBtn.classList.remove('recording')
     _recognition = null
     console.error('[voice] error:', e.error)
-    if (e.error === 'not-allowed') appendSystemMessage('请允许麦克风权限后重试')
-    else if (e.error === 'network') appendSystemMessage('语音服务不可用（需要网络连接 Google 服务）')
+    if (e.error === 'not-allowed') appendSystemMessage(t('voice.need.permission'))
+    else if (e.error === 'network') appendSystemMessage(t('voice.service.unavailable'))
     else if (e.error !== 'aborted' && e.error !== 'no-speech') appendSystemMessage(`${t('voice.error')} (${e.error})`)
   }
   _recognition.start()
@@ -218,6 +266,27 @@ function updateSendState() {
   }
 }
 
+function isSessionMissingError(message) {
+  return /会话不存在|session\s+not\s+found/i.test(String(message || ''))
+}
+
+function notifyReconnectingSession() {
+  const now = Date.now()
+  if (now - _lastReconnectNoticeAt < RECONNECT_NOTICE_COOLDOWN_MS) return
+  _lastReconnectNoticeAt = now
+  appendSystemMessage(`${t('chat.send.error')}: ${t('chat.reconnecting')}`)
+}
+
+function fallbackToDefaultSessionWithNotice() {
+  const fallback = _serverSessionKey || wsClient.snapshot?.sessionDefaults?.mainSessionKey || 'agent:main:main'
+  if (!fallback || fallback === _sessionKey) {
+    appendSystemMessage(`${t('chat.send.error')}: ${t('chat.session.missing.manual')}`)
+    return
+  }
+  appendSystemMessage(`${t('chat.send.error')}: ${t('chat.session.missing.fallback')}`)
+  switchSession(fallback)
+}
+
 function handleSendClick() {
   if (_isStreaming) {
     wsClient.chatAbort(_sessionKey, _currentRunId).catch(() => {})
@@ -238,8 +307,19 @@ async function sendMessage() {
 
   // 如果正在发送或流式响应中，加入队列
   if (_isSending || _isStreaming) {
+    if (text) {
+      appendUserMessage(text, attachments)
+      saveMessage({
+        id: uuid(),
+        sessionKey: _sessionKey,
+        role: 'user',
+        content: text,
+        attachments: attachments?.length ? attachments : undefined,
+        timestamp: Date.now()
+      })
+    }
     _messageQueue.push({ text, attachments })
-    // 不再这里 append，等发送时统一处理
+    // 已在入队时 append，发送时不要重复渲染
     return
   }
 
@@ -262,6 +342,10 @@ async function doSend(text, attachments) {
     await wsClient.chatSend(_sessionKey, text, attachments.length ? attachments : undefined)
   } catch (err) {
     showTyping(false)
+    if (isSessionMissingError(err.message)) {
+      fallbackToDefaultSessionWithNotice()
+      return
+    }
     if (err.message.includes('未连接') || err.message.includes('超时') || err.message.includes('重连') || err.message.includes('timeout') || err.message.includes('reconnect')) {
       appendSystemMessage(t('chat.reconnecting'))
     } else {
@@ -286,6 +370,10 @@ function processMessageQueue() {
   wsClient.chatSend(_sessionKey, next.text, next.attachments?.length ? next.attachments : undefined)
     .catch(err => {
       showTyping(false)
+      if (isSessionMissingError(err.message)) {
+        fallbackToDefaultSessionWithNotice()
+        return
+      }
       appendSystemMessage(`${t('chat.send.error')}: ${err.message}`)
     })
     .finally(() => {
@@ -317,6 +405,9 @@ function handleChatEvent(payload) {
       if (!_currentAiBubble) { _currentAiBubble = createAiBubble(); _currentRunId = payload.runId }
       _currentAiText = c.text
       if (c.images.length) _currentAiImages = c.images
+      if (c.videos.length) _currentAiVideos = c.videos
+      if (c.audios.length) _currentAiAudios = c.audios
+      if (c.files.length) _currentAiFiles = c.files
       throttledRender()
     }
     return
@@ -326,14 +417,37 @@ function handleChatEvent(payload) {
     const c = extractContent(payload.message)
     const finalText = c?.text
     const finalImages = c?.images || []
+    const finalVideos = c?.videos || []
+    const finalAudios = c?.audios || []
+    const finalFiles = c?.files || []
+    const runId = payload.runId
+    const sig = `${finalText || ''}__img:${finalImages.length}__vid:${finalVideos.length}__aud:${finalAudios.length}__file:${finalFiles.length}`
+    const now = Date.now()
+
+    // 去重1：同 runId 的重复 final（重连补发/重复投递）
+    if (runId && _seenFinalRunIds.has(runId)) {
+      console.log('[chat] 忽略重复 final(runId):', runId)
+      return
+    }
+    // 去重2：短时间内同内容重复 final（runId 缺失或变化）
+    if (sig && _lastFinalSig === sig && now - _lastFinalAt < FINAL_DUP_WINDOW_MS) {
+      console.log('[chat] 忽略重复 final(signature):', sig.slice(0, 80))
+      if (runId) _seenFinalRunIds.add(runId)
+      return
+    }
+
+    const hasMedia = finalImages.length || finalVideos.length || finalAudios.length || finalFiles.length
     // 忽略空 final（Gateway 会为一条消息触发多个 run，部分是空 final）
-    if (!_currentAiBubble && !finalText && !finalImages.length) return
+    if (!_currentAiBubble && !finalText && !hasMedia) return
     showTyping(false)
     // 如果流式阶段没有创建 bubble，从 final message 中提取
-    if (!_currentAiBubble && (finalText || finalImages.length)) {
+    if (!_currentAiBubble && (finalText || hasMedia)) {
       _currentAiBubble = createAiBubble()
       _currentAiText = finalText || ''
       _currentAiImages = finalImages
+      _currentAiVideos = finalVideos
+      _currentAiAudios = finalAudios
+      _currentAiFiles = finalFiles
     }
     // 移除光标元素
     const wrapper = _currentAiBubble?.parentElement
@@ -343,16 +457,30 @@ function handleChatEvent(payload) {
       const time = wrapper.querySelector('.msg-time')
       if (time) time.textContent = formatTime(new Date())
     }
-    if (_currentAiBubble && (_currentAiText || _currentAiImages.length)) {
+    if (_currentAiBubble && (_currentAiText || _currentAiImages.length || _currentAiVideos.length || _currentAiAudios.length || _currentAiFiles.length)) {
       _currentAiBubble.innerHTML = renderMarkdown(_currentAiText)
       appendImagesToEl(_currentAiBubble, _currentAiImages)
+      appendVideosToEl(_currentAiBubble, _currentAiVideos)
+      appendAudiosToEl(_currentAiBubble, _currentAiAudios)
+      appendFilesToEl(_currentAiBubble, _currentAiFiles)
       bindImageClicks(_currentAiBubble)
+      bindVideoClicks(_currentAiBubble)
       initVoiceBubbles(_currentAiBubble)
     }
     // 保存 AI 回复到本地
     if (_currentAiText) {
       saveMessage({ id: payload.runId || uuid(), sessionKey: _sessionKey, role: 'assistant', content: _currentAiText, timestamp: Date.now() })
     }
+
+    if (runId) {
+      _seenFinalRunIds.add(runId)
+      if (_seenFinalRunIds.size > 200) {
+        _seenFinalRunIds = new Set(Array.from(_seenFinalRunIds).slice(-100))
+      }
+    }
+    _lastFinalSig = sig
+    _lastFinalAt = now
+
     resetStreamState()
     processMessageQueue()
     return
@@ -364,6 +492,7 @@ function handleChatEvent(payload) {
       if (_currentAiBubble) {
         _currentAiBubble.innerHTML = renderMarkdown(_currentAiText)
         bindImageClicks(_currentAiBubble)
+        bindVideoClicks(_currentAiBubble)
         initVoiceBubbles(_currentAiBubble)
       }
       // 移除光标，更新时间
@@ -382,7 +511,7 @@ function handleChatEvent(payload) {
   }
 
   if (state === 'error') {
-    const errMsg = payload.errorMessage || '未知错误'
+    const errMsg = payload.errorMessage || t('chat.error.unknown')
     // 流式进行中（lifecycle start 已触发），Gateway 可能自动重试
     if (_isStreaming) {
       console.warn('[chat] 流式中临时错误，等待 Gateway 重试:', errMsg)
@@ -391,7 +520,7 @@ function handleChatEvent(payload) {
     }
     // 非流式状态，终态错误
     showTyping(false)
-    appendSystemMessage(`错误: ${errMsg}`)
+    appendSystemMessage(`${t('chat.error.prefix')}: ${errMsg}`)
     resetStreamState()
     processMessageQueue()
     return
@@ -417,13 +546,11 @@ function handleAgentEvent(payload) {
     if (data?.phase === 'end') {
       showTyping(false)
       clearTimeout(_streamSafetyTimer)
-      // 如果有活跃气泡内容，说明这是最后一个 run，需要彻底清理
-      if (_currentAiBubble && (_currentAiText || _currentAiImages.length)) {
-        resetStreamState()
-      } else {
-        _isStreaming = false; updateSendState()
-      }
-      processMessageQueue()
+      // 注意：lifecycle end 可能早于 chat.final 到达。
+      // 这里不能 resetStreamState，否则 final 会再创建一次气泡，造成“流式后快速重复一遍”。
+      _isStreaming = false
+      updateSendState()
+      // 队列在 chat.final/error/aborted 终态里再推进，避免提前发送导致状态交错。
     }
     return
   }
@@ -469,10 +596,14 @@ function handleAgentEvent(payload) {
 function resetStreamState() {
   clearTimeout(_streamSafetyTimer)
   // 最后一次渲染确保完整
-  if (_currentAiBubble && (_currentAiText || _currentAiImages.length)) {
+  if (_currentAiBubble && (_currentAiText || _currentAiImages.length || _currentAiVideos.length || _currentAiAudios.length || _currentAiFiles.length)) {
     _currentAiBubble.innerHTML = renderMarkdown(_currentAiText)
     appendImagesToEl(_currentAiBubble, _currentAiImages)
+    appendVideosToEl(_currentAiBubble, _currentAiVideos)
+    appendAudiosToEl(_currentAiBubble, _currentAiAudios)
+    appendFilesToEl(_currentAiBubble, _currentAiFiles)
     bindImageClicks(_currentAiBubble)
+    bindVideoClicks(_currentAiBubble)
     initVoiceBubbles(_currentAiBubble)
     scrollToBottom()
   }
@@ -481,6 +612,9 @@ function resetStreamState() {
   _currentAiBubble = null
   _currentAiText = ''
   _currentAiImages = []
+  _currentAiVideos = []
+  _currentAiAudios = []
+  _currentAiFiles = []
   _currentRunId = null
   _isStreaming = false
   _toolCards.clear()
@@ -574,11 +708,21 @@ function appendUserMessage(text, attachments, msgTime) {
   if (attachments?.length) {
     attachments.forEach(att => {
       const src = att.data || (att.content ? `data:${att.mimeType};base64,${att.content}` : '')
-      if (src) html += `<br><img src="${src}" alt="attachment" class="msg-img" />`
+      const cat = att.category || att.type || 'image'
+      if (cat === 'image' && src) {
+        html += `<br><img src="${src}" alt="attachment" class="msg-img" />`
+      } else if (cat === 'video' && src) {
+        html += `<br><video controls preload="metadata" class="msg-video" src="${src}"></video>`
+      } else if (cat === 'audio' && src) {
+        html += `<br><audio controls preload="metadata" class="msg-audio" src="${src}"></audio>`
+      } else if (att.fileName || att.name) {
+        html += `<br><div class="msg-file-card"><span class="msg-file-icon">📎</span><span class="msg-file-name">${escapeText(att.fileName || att.name)}</span></div>`
+      }
     })
   }
   bubble.innerHTML = html
   bindImageClicks(bubble)
+  bindVideoClicks(bubble)
   initVoiceBubbles(bubble)
 
   // 添加时间戳
@@ -592,14 +736,18 @@ function appendUserMessage(text, attachments, msgTime) {
   scrollToBottom()
 }
 
-function appendAiMessage(text, msgTime, images) {
+function appendAiMessage(text, msgTime, images, videos, audios, files) {
   const wrapper = document.createElement('div')
   wrapper.className = 'msg ai'
   const bubble = document.createElement('div')
   bubble.className = 'msg-bubble'
   bubble.innerHTML = renderMarkdown(text)
   appendImagesToEl(bubble, images)
+  appendVideosToEl(bubble, videos)
+  appendAudiosToEl(bubble, audios)
+  appendFilesToEl(bubble, files)
   bindImageClicks(bubble)
+  bindVideoClicks(bubble)
   initVoiceBubbles(bubble)
 
   // 添加时间戳
@@ -654,14 +802,110 @@ function appendImagesToEl(el, images) {
   if (!images?.length) return
   images.forEach(img => {
     const imgEl = document.createElement('img')
-    imgEl.src = `data:${img.mediaType};base64,${img.data}`
+    if (img.data) {
+      imgEl.src = `data:${img.mediaType};base64,${img.data}`
+    } else if (img.url) {
+      imgEl.src = img.url
+    }
     imgEl.className = 'msg-img'
     el.appendChild(imgEl)
   })
 }
 
+/** 渲染视频到消息气泡 */
+function appendVideosToEl(el, videos) {
+  if (!videos?.length) return
+  videos.forEach(vid => {
+    const container = document.createElement('div')
+    container.className = 'msg-video-wrap'
+    const videoEl = document.createElement('video')
+    videoEl.className = 'msg-video'
+    videoEl.controls = true
+    videoEl.preload = 'metadata'
+    videoEl.playsInline = true
+    if (vid.data) {
+      videoEl.src = `data:${vid.mediaType};base64,${vid.data}`
+    } else if (vid.url) {
+      videoEl.src = vid.url.startsWith('/') ? vid.url : vid.url
+    }
+    container.appendChild(videoEl)
+    el.appendChild(container)
+  })
+}
+
+/** 渲染音频到消息气泡 */
+function appendAudiosToEl(el, audios) {
+  if (!audios?.length) return
+  audios.forEach(aud => {
+    let src = ''
+    if (aud.data) src = `data:${aud.mediaType};base64,${aud.data}`
+    else if (aud.url) src = aud.url
+
+    // 如果是通过 /media 端点提供的音频，使用语音气泡样式
+    if (aud.url && /\/media\?/.test(aud.url)) {
+      const bubble = document.createElement('div')
+      bubble.className = 'voice-bubble'
+      bubble.dataset.src = src
+      bubble.innerHTML = `<span class="voice-icon">&#9654;</span><span class="voice-bar"></span><span class="voice-dur">${aud.duration ? Math.round(aud.duration) + '″' : '0″'}</span>`
+      el.appendChild(bubble)
+    } else {
+      // 标准音频播放器
+      const audioEl = document.createElement('audio')
+      audioEl.className = 'msg-audio'
+      audioEl.controls = true
+      audioEl.preload = 'metadata'
+      audioEl.src = src
+      el.appendChild(audioEl)
+    }
+  })
+}
+
+/** 渲染文件卡片到消息气泡 */
+function appendFilesToEl(el, files) {
+  if (!files?.length) return
+  files.forEach(f => {
+    const card = document.createElement('div')
+    card.className = 'msg-file-card'
+    const ext = (f.name || '').split('.').pop().toLowerCase()
+    const iconMap = { pdf: '📄', doc: '📝', docx: '📝', txt: '📃', md: '📃', json: '📋', csv: '📊', zip: '📦', rar: '📦' }
+    const icon = iconMap[ext] || '📎'
+    const size = f.size ? formatFileSize(f.size) : ''
+    card.innerHTML = `<span class="msg-file-icon">${icon}</span><div class="msg-file-info"><span class="msg-file-name">${escapeText(f.name || '文件')}</span>${size ? `<span class="msg-file-size">${size}</span>` : ''}</div>`
+    if (f.url) {
+      card.style.cursor = 'pointer'
+      card.onclick = () => window.open(f.url, '_blank')
+    } else if (f.data) {
+      card.style.cursor = 'pointer'
+      card.onclick = () => {
+        const a = document.createElement('a')
+        a.href = `data:${f.mimeType || 'application/octet-stream'};base64,${f.data}`
+        a.download = f.name || '文件'
+        a.click()
+      }
+    }
+    el.appendChild(card)
+  })
+}
+
+function formatFileSize(bytes) {
+  if (!bytes || bytes <= 0) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
 function bindImageClicks(container) {
-  container.querySelectorAll('img').forEach(img => { img.onclick = () => showLightbox(img.src) })
+  container.querySelectorAll('img.msg-img').forEach(img => { img.onclick = () => showLightbox(img.src) })
+}
+
+function bindVideoClicks(container) {
+  container.querySelectorAll('video.msg-video').forEach(vid => {
+    // 双击全屏/灯箱
+    vid.ondblclick = (e) => {
+      e.preventDefault()
+      showLightbox(vid.src, 'video')
+    }
+  })
 }
 
 /** 语音气泡：加载时长、设置宽度、绑定播放 */
@@ -743,13 +987,22 @@ export async function loadHistory() {
     if (hash === _lastHistoryHash && hasExisting) return
     _lastHistoryHash = hash
 
+    // 有待发送/发送中的本地消息时，不要全量重绘，避免覆盖本地乐观渲染
+    if (hasExisting && (_isSending || _isStreaming || _messageQueue.length > 0)) {
+      saveMessages(result.messages.map(m => {
+        const c = extractContent(m)
+        return { id: m.id || uuid(), sessionKey: _sessionKey, role: m.role, content: c?.text || '', timestamp: m.timestamp || Date.now() }
+      }))
+      return
+    }
+
     clearMessages()
     deduped.forEach(msg => {
       const msgTime = msg.timestamp ? new Date(msg.timestamp) : new Date()
       if (msg.role === 'user') {
-        appendUserMessage(msg.text, msg.images?.length ? msg.images.map(i => ({ content: i.data, mimeType: i.mediaType })) : null, msgTime)
+        appendUserMessage(msg.text, msg.images?.length ? msg.images.map(i => ({ content: i.data, mimeType: i.mediaType, category: 'image' })) : null, msgTime)
       } else if (msg.role === 'assistant') {
-        appendAiMessage(msg.text, msgTime, msg.images)
+        appendAiMessage(msg.text, msgTime, msg.images, msg.videos, msg.audios, msg.files)
       }
     })
     saveMessages(result.messages.map(m => {
@@ -759,6 +1012,10 @@ export async function loadHistory() {
     scrollToBottom()
   } catch (e) {
     console.error('[chat] loadHistory error:', e)
+    if (isSessionMissingError(e.message)) {
+      fallbackToDefaultSessionWithNotice()
+      return
+    }
     if (!_messagesEl.querySelector('.msg')) appendSystemMessage(`${t('chat.load.error')}: ${e.message}`)
   }
 }
@@ -769,17 +1026,20 @@ function dedupeHistory(messages) {
   for (const msg of messages) {
     if (msg.role === 'toolResult') continue
     const c = extractContent(msg)
-    if (!c?.text && !c?.images?.length) continue
+    if (!c?.text && !c?.images?.length && !c?.videos?.length && !c?.audios?.length && !c?.files?.length) continue
     const last = deduped[deduped.length - 1]
     if (last && last.role === msg.role) {
       if (msg.role === 'user' && last.text === (c.text || '')) continue
       if (msg.role === 'assistant') {
         last.text = [last.text, c.text].filter(Boolean).join('\n')
         last.images = [...(last.images || []), ...(c.images || [])]
+        last.videos = [...(last.videos || []), ...(c.videos || [])]
+        last.audios = [...(last.audios || []), ...(c.audios || [])]
+        last.files = [...(last.files || []), ...(c.files || [])]
         continue
       }
     }
-    deduped.push({ role: msg.role, text: c.text || '', images: c.images, timestamp: msg.timestamp })
+    deduped.push({ role: msg.role, text: c.text || '', images: c.images, videos: c.videos, audios: c.audios, files: c.files, timestamp: msg.timestamp })
   }
   return deduped
 }
@@ -830,12 +1090,12 @@ async function showSessionPicker() {
     <div class="cmd-panel-header">
       <h3>${t('session.title')}</h3>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="session-action-btn" id="session-new-btn" title="新建会话">＋</button>
+        <button class="session-action-btn" id="session-new-btn" title="${t('session.new')}">＋</button>
         <button class="close-btn">×</button>
       </div>
     </div>
     <div class="session-list cmd-list">
-      <div class="session-loading">加载中...</div>
+      <div class="session-loading">${t('session.loading')}</div>
     </div>
   `
   panel.querySelector('.close-btn').onclick = () => closeSessionPicker()
@@ -891,7 +1151,7 @@ async function refreshSessionList() {
         </div>
         ${timeStr ? `<div class="cmd-desc" style="flex-shrink:0">${timeStr}</div>` : ''}
         ${isActive ? '<div style="color:var(--success);flex-shrink:0">●</div>' : ''}
-        <button class="session-delete-btn" title="删除会话">✕</button>
+        <button class="session-delete-btn" title="${t('session.delete')}">✕</button>
       `
 
       // 点击切换会话
@@ -1056,6 +1316,9 @@ function switchSession(newKey) {
   _sessionKey = newKey
   localStorage.setItem(STORAGE_SESSION_KEY, newKey)
   _lastHistoryHash = ''
+  _seenFinalRunIds.clear()
+  _lastFinalSig = ''
+  _lastFinalAt = 0
   resetStreamState()
   updateSessionTitle()
   showLoadingOverlay()
