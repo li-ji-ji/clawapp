@@ -5,8 +5,11 @@ import { initCommands, showCommands } from './commands.js'
 import { t, formatRelativeTime } from './i18n.js'
 import { initSettings, showSettings } from './settings.js'
 import { saveMessage, saveMessages, getLocalMessages, clearSessionMessages, isStorageAvailable, saveSessionInfo } from './message-db.js'
+import { requestPermission, showNotification, isSupported as isNotifySupported } from './notify.js'
+import { initSessionPicker, setPickerSessionKey, showSessionPicker } from './session-picker.js'
 
 const STORAGE_SESSION_KEY = 'clawapp-session-key'
+const STORAGE_PENDING_KEY = 'clawapp-pending-sessions'
 
 let _messagesEl = null
 let _typingEl = null
@@ -49,6 +52,23 @@ const SVG_MIC = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" str
 
 let _recognition = null
 let _isRecording = false
+
+function shouldAutoFocusInput() {
+  const ua = navigator.userAgent || ''
+  const isMobileUA = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(ua)
+  const isCoarsePointer = !!window.matchMedia?.('(pointer: coarse)').matches
+  return !(isMobileUA || isCoarsePointer)
+}
+
+function focusInputIfDesktop() {
+  if (!_textarea || !shouldAutoFocusInput()) return
+  requestAnimationFrame(() => _textarea?.focus())
+}
+
+function blurInputIfMobile() {
+  if (!_textarea || shouldAutoFocusInput()) return
+  _textarea.blur()
+}
 
 /** 从 OpenClaw 消息中提取可渲染内容（文本 + 图片 + 视频 + 音频 + 文件） */
 function extractContent(message) {
@@ -148,9 +168,61 @@ export function setSessionKey(key) {
     if (_sessionKey) localStorage.setItem(STORAGE_SESSION_KEY, _sessionKey)
   }
 
+  setPickerSessionKey(_sessionKey)
   updateSessionTitle()
 }
 export function getSessionKey() { return _sessionKey }
+
+function readPendingSessions() {
+  try {
+    const raw = localStorage.getItem(STORAGE_PENDING_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writePendingSessions(map) {
+  try {
+    localStorage.setItem(STORAGE_PENDING_KEY, JSON.stringify(map || {}))
+  } catch {}
+}
+
+function markSessionPending(pending) {
+  if (!_sessionKey) return
+  const map = readPendingSessions()
+  if (pending) map[_sessionKey] = Date.now()
+  else delete map[_sessionKey]
+  writePendingSessions(map)
+}
+
+function isSessionMarkedPending() {
+  if (!_sessionKey) return false
+  const map = readPendingSessions()
+  return !!map[_sessionKey]
+}
+
+async function restorePendingIndicator() {
+  if (!_sessionKey) return
+  const localPending = isSessionMarkedPending()
+  if (localPending) showTyping(true)
+
+  try {
+    const progress = await wsClient.getSessionProgress(_sessionKey, { preferSessionKey: true })
+    if (progress?.busy) {
+      showTyping(true)
+      markSessionPending(true)
+      return
+    }
+    if (localPending) {
+      showTyping(false)
+      markSessionPending(false)
+    }
+  } catch (e) {
+    console.warn('[chat] restorePendingIndicator failed:', e)
+  }
+}
 
 export function initChatUI(onSettings) {
   _messagesEl = document.getElementById('chat-messages')
@@ -171,8 +243,17 @@ export function initChatUI(onSettings) {
   initMedia(_previewBar, updateSendState)
   initSettings(onSettings)
 
+  // 页面就绪后静默检查通知权限（已 granted 则无感，'default' 则不主动弹窗——由用户在设置里开启）
+  if (isNotifySupported && Notification.permission === 'granted') {
+    // 已授权，无需任何操作
+  }
+
   document.getElementById('settings-btn').onclick = () => showSettings()
   document.getElementById('session-title').onclick = () => showSessionPicker()
+  initSessionPicker({
+    onSwitch: switchSession,
+    onSystemMsg: appendSystemMessage,
+  })
   document.getElementById('cmd-btn').onclick = () => showCommands()
   document.getElementById('attach-btn').onclick = () => pickMedia()
   _sendBtn.onclick = () => handleSendClick()
@@ -192,7 +273,7 @@ export function initChatUI(onSettings) {
   }
 
   initCommands((cmd, fillOnly) => {
-    if (fillOnly) { _textarea.value = cmd; _textarea.focus(); updateSendState() }
+    if (fillOnly) { _textarea.value = cmd; focusInputIfDesktop(); updateSendState() }
     else { _textarea.value = cmd; sendMessage() }
   })
 
@@ -204,6 +285,7 @@ export function initChatUI(onSettings) {
     if (status === 'ready' || status === 'connected') {
       dot.classList.add('connected')
       hideDisconnectBanner()
+      restorePendingIndicator().catch(() => {})
     } else if (status === 'connecting' || status === 'reconnecting') {
       dot.classList.add('connecting')
       showDisconnectBanner(true)
@@ -212,6 +294,8 @@ export function initChatUI(onSettings) {
       showDisconnectBanner(false)
     }
   })
+
+  restorePendingIndicator().catch(() => {})
 }
 
 function toggleVoiceInput(SR) {
@@ -233,7 +317,7 @@ function toggleVoiceInput(SR) {
     _isRecording = false
     micBtn.classList.remove('recording')
     _recognition = null
-    _textarea.focus()
+    focusInputIfDesktop()
   }
   _recognition.onerror = (e) => {
     _isRecording = false
@@ -292,6 +376,7 @@ function handleSendClick() {
     wsClient.chatAbort(_sessionKey, _currentRunId).catch(() => {})
     return
   }
+  blurInputIfMobile()
   sendMessage()
 }
 
@@ -335,6 +420,7 @@ async function doSend(text, attachments) {
     saveMessage({ id: uuid(), sessionKey: _sessionKey, role: 'user', content: text, attachments: attachments?.length ? attachments : undefined, timestamp: Date.now() })
   }
   showTyping(true)
+  markSessionPending(true)
   _isSending = true
   _textarea.disabled = true
 
@@ -342,6 +428,7 @@ async function doSend(text, attachments) {
     await wsClient.chatSend(_sessionKey, text, attachments.length ? attachments : undefined)
   } catch (err) {
     showTyping(false)
+    markSessionPending(false)
     if (isSessionMissingError(err.message)) {
       fallbackToDefaultSessionWithNotice()
       return
@@ -354,7 +441,7 @@ async function doSend(text, attachments) {
   } finally {
     _isSending = false
     _textarea.disabled = false
-    _textarea.focus()
+    focusInputIfDesktop()
   }
 }
 
@@ -365,11 +452,13 @@ function processMessageQueue() {
   const next = _messageQueue.shift()
   // 用户消息已经在入队时 append 过了，这里不再 append
   showTyping(true)
+  markSessionPending(true)
   _isSending = true
   _textarea.disabled = true
   wsClient.chatSend(_sessionKey, next.text, next.attachments?.length ? next.attachments : undefined)
     .catch(err => {
       showTyping(false)
+      markSessionPending(false)
       if (isSessionMissingError(err.message)) {
         fallbackToDefaultSessionWithNotice()
         return
@@ -379,7 +468,7 @@ function processMessageQueue() {
     .finally(() => {
       _isSending = false
       _textarea.disabled = false
-      _textarea.focus()
+      focusInputIfDesktop()
     })
 }
 
@@ -388,6 +477,37 @@ function handleEvent(msg) {
   const { event, payload } = msg
   if (event === 'chat') handleChatEvent(payload)
   else if (event === 'agent') handleAgentEvent(payload)
+  else if (event === 'system.notify') handleSystemNotify(payload)
+}
+
+/** 处理 OpenClaw Gateway 主动推送的 system.notify 事件 */
+function handleSystemNotify(payload) {
+  if (!payload) return
+  const title = payload.title || 'OpenClaw'
+  const body = payload.body || payload.message || payload.text || ''
+  const sentAt = payload._sentAt ? new Date(payload._sentAt) : new Date()
+  appendSystemNotifyItem(title, body, sentAt)
+  const tag = payload.tag || 'system-notify'
+  const opts = { body, tag, renotify: true }
+  if (payload.icon) opts.icon = payload.icon
+  if (payload.data) opts.data = payload.data
+  showNotification(title, opts)
+}
+
+/** 实时 SSE 插入一条居中系统通知行 */
+function appendSystemNotifyItem(title, body, sentAt) {
+  if (!_messagesEl) return
+  const sentAtMs = sentAt instanceof Date ? sentAt.getTime() : (Number(sentAt) || Date.now())
+  if (_messagesEl.querySelector(`.system-notify-item[data-sent-at="${sentAtMs}"]`)) return
+  const wrapper = document.createElement('div')
+  wrapper.className = 'msg system-notify-item'
+  wrapper.dataset.sentAt = sentAtMs
+  const timeStr = formatTime(new Date(sentAtMs))
+  const titleHtml = title ? `<span class="sni-title">${escapeText(title)}</span>` : ''
+  const bodyHtml = body ? `<span class="sni-body">${escapeText(body)}</span>` : ''
+  wrapper.innerHTML = `<div class="sni-pill">🔔 ${titleHtml}${titleHtml && bodyHtml ? '：' : ''}${bodyHtml}<span class="sni-time">${timeStr}</span></div>`
+  _messagesEl.insertBefore(wrapper, _typingEl)
+  scrollToBottom()
 }
 
 function handleChatEvent(payload) {
@@ -481,6 +601,12 @@ function handleChatEvent(payload) {
     _lastFinalSig = sig
     _lastFinalAt = now
 
+    // 页面在后台时（如手机熄屏、切换到其他 App）弹出浏览器通知
+    if (document.hidden && isNotifySupported && Notification.permission === 'granted' && (finalText || hasMedia)) {
+      const preview = finalText ? (finalText.length > 80 ? finalText.slice(0, 80) + '…' : finalText) : t('notify.media')
+      showNotification(t('notify.ai.reply'), { body: preview, tag: 'ai-reply', renotify: false })
+    }
+
     resetStreamState()
     processMessageQueue()
     return
@@ -520,6 +646,7 @@ function handleChatEvent(payload) {
     }
     // 非流式状态，终态错误
     showTyping(false)
+    markSessionPending(false)
     appendSystemMessage(`${t('chat.error.prefix')}: ${errMsg}`)
     resetStreamState()
     processMessageQueue()
@@ -618,6 +745,7 @@ function resetStreamState() {
   _currentRunId = null
   _isStreaming = false
   _toolCards.clear()
+  markSessionPending(false)
   updateSendState()
 }
 
@@ -732,6 +860,8 @@ function appendUserMessage(text, attachments, msgTime) {
   
   wrapper.appendChild(bubble)
   wrapper.appendChild(time)
+  const ts = (msgTime || new Date()).getTime()
+  wrapper.dataset.msgTime = ts
   _messagesEl.insertBefore(wrapper, _typingEl)
   scrollToBottom()
 }
@@ -757,6 +887,7 @@ function appendAiMessage(text, msgTime, images, videos, audios, files) {
   
   wrapper.appendChild(bubble)
   wrapper.appendChild(time)
+  wrapper.dataset.msgTime = (msgTime || new Date()).getTime()
   _messagesEl.insertBefore(wrapper, _typingEl)
   scrollToBottom()
 }
@@ -958,7 +1089,7 @@ export async function loadHistory() {
   if (!_sessionKey) return
   const hasExisting = _messagesEl?.querySelector('.msg')
 
-  // 首次加载：显示本地缓存
+  // 首次加载：显示本地缓存（快速展示，不等待服务端）
   if (!hasExisting && isStorageAvailable()) {
     const local = await getLocalMessages(_sessionKey, 200)
     if (local.length) {
@@ -972,24 +1103,29 @@ export async function loadHistory() {
     }
   }
 
-  // 从服务端拉取
+  // 从服务端并行拉取：聊天历史 + 通知历史
   if (!wsClient.gatewayReady) return
   try {
-    const result = await wsClient.chatHistory(_sessionKey, 200)
-    if (!result?.messages?.length) {
+    const [chatResult, notifyItems] = await Promise.all([
+      wsClient.chatHistory(_sessionKey, 200),
+      wsClient.notifyHistory(),
+    ])
+
+    if (!chatResult?.messages?.length) {
       if (!_messagesEl.querySelector('.msg')) { clearMessages(); appendSystemMessage(t('chat.no.messages')) }
+      if (notifyItems.length) insertNotifyItemsInOrder(notifyItems)
       return
     }
     // 去重
-    const deduped = dedupeHistory(result.messages)
+    const deduped = dedupeHistory(chatResult.messages)
     // 算 hash，没变就跳过渲染
     const hash = deduped.map(m => `${m.role}:${m.text?.length || 0}`).join('|')
-    if (hash === _lastHistoryHash && hasExisting) return
+    if (hash === _lastHistoryHash && hasExisting && !notifyItems.length) return
     _lastHistoryHash = hash
 
     // 有待发送/发送中的本地消息时，不要全量重绘，避免覆盖本地乐观渲染
     if (hasExisting && (_isSending || _isStreaming || _messageQueue.length > 0)) {
-      saveMessages(result.messages.map(m => {
+      saveMessages(chatResult.messages.map(m => {
         const c = extractContent(m)
         return { id: m.id || uuid(), sessionKey: _sessionKey, role: m.role, content: c?.text || '', timestamp: m.timestamp || Date.now() }
       }))
@@ -1005,7 +1141,9 @@ export async function loadHistory() {
         appendAiMessage(msg.text, msgTime, msg.images, msg.videos, msg.audios, msg.files)
       }
     })
-    saveMessages(result.messages.map(m => {
+    // 将通知条按时间插到对应位置
+    insertNotifyItemsInOrder(notifyItems)
+    saveMessages(chatResult.messages.map(m => {
       const c = extractContent(m)
       return { id: m.id || uuid(), sessionKey: _sessionKey, role: m.role, content: c?.text || '', timestamp: m.timestamp || Date.now() }
     }))
@@ -1051,6 +1189,41 @@ function clearMessages() {
   children.forEach(child => { if (child !== _typingEl) _messagesEl.removeChild(child) })
 }
 
+/**
+ * 按时间顺序注入通知条到当前消息列表中
+ * @param {Array<{title,body,_sentAt}>} items 服务端返回的通知列表
+ */
+function insertNotifyItemsInOrder(items) {
+  if (!_messagesEl || !items?.length) return
+  const sorted = [...items].sort((a, b) => (a._sentAt || 0) - (b._sentAt || 0))
+
+  // 收集所有带 data-msg-time 的消息元素（用于找插入位置）
+  const msgEls = Array.from(_messagesEl.children).filter(
+    el => el !== _typingEl && !el.classList.contains('system-notify-item') && el.dataset.msgTime
+  )
+
+  for (const n of sorted) {
+    const sentAtMs = n._sentAt || 0
+    const title = n.title || 'OpenClaw'
+    const body = n.body || n.message || n.text || ''
+
+    // DOM 内去重
+    if (sentAtMs && _messagesEl.querySelector(`.system-notify-item[data-sent-at="${sentAtMs}"]`)) continue
+
+    const wrapper = document.createElement('div')
+    wrapper.className = 'msg system-notify-item'
+    if (sentAtMs) wrapper.dataset.sentAt = sentAtMs
+    const timeStr = sentAtMs ? formatTime(new Date(sentAtMs)) : ''
+    const titleHtml = title ? `<span class="sni-title">${escapeText(title)}</span>` : ''
+    const bodyHtml = body ? `<span class="sni-body">${escapeText(body)}</span>` : ''
+    wrapper.innerHTML = `<div class="sni-pill">🔔 ${titleHtml}${titleHtml && bodyHtml ? '：' : ''}${bodyHtml}<span class="sni-time">${timeStr}</span></div>`
+
+    // 找第一个时间戳比它更晚的消息元素，插到它前面
+    const after = sentAtMs ? msgEls.find(el => Number(el.dataset.msgTime) > sentAtMs) : null
+    _messagesEl.insertBefore(wrapper, after || _typingEl)
+  }
+}
+
 export function abortChat() {
   wsClient.chatAbort(_sessionKey, _currentRunId).catch(() => {})
 }
@@ -1072,212 +1245,6 @@ function updateSessionTitle() {
   }
   titleEl.textContent = label
   titleEl.title = _sessionKey
-}
-
-/** 会话选择面板 */
-async function showSessionPicker() {
-  // 移除已有面板
-  document.querySelector('.session-overlay')?.remove()
-  document.querySelector('.session-panel')?.remove()
-
-  const overlay = document.createElement('div')
-  overlay.className = 'session-overlay cmd-overlay visible'
-  overlay.onclick = () => closeSessionPicker()
-
-  const panel = document.createElement('div')
-  panel.className = 'session-panel cmd-panel visible'
-  panel.innerHTML = `
-    <div class="cmd-panel-header">
-      <h3>${t('session.title')}</h3>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="session-action-btn" id="session-new-btn" title="${t('session.new')}">＋</button>
-        <button class="close-btn">×</button>
-      </div>
-    </div>
-    <div class="session-list cmd-list">
-      <div class="session-loading">${t('session.loading')}</div>
-    </div>
-  `
-  panel.querySelector('.close-btn').onclick = () => closeSessionPicker()
-  panel.querySelector('#session-new-btn').onclick = () => promptNewSession()
-
-  document.body.appendChild(overlay)
-  document.body.appendChild(panel)
-
-  await refreshSessionList()
-}
-
-/** 刷新会话列表 */
-async function refreshSessionList() {
-  const listEl = document.querySelector('.session-list')
-  if (!listEl) return
-  listEl.innerHTML = '<div class="session-loading">' + t('session.loading') + '</div>'
-
-  try {
-    const result = await wsClient.sessionsList(50)
-    const sessions = result?.sessions || result || []
-    listEl.innerHTML = ''
-
-    if (!sessions.length) {
-      listEl.innerHTML = '<div class="session-loading">' + t('session.empty') + '</div>'
-      return
-    }
-
-    sessions.forEach(s => {
-      const key = s.sessionKey || s.key || ''
-      const isActive = key === _sessionKey
-      const item = document.createElement('div')
-      item.className = `cmd-item${isActive ? ' session-active' : ''}`
-
-      // 解析会话信息
-      const parts = key.split(':')
-      let name = key
-      let detail = ''
-      if (parts.length >= 3) {
-        const agent = parts[1]
-        const channel = parts.slice(2).join(':')
-        name = channel === 'main' ? `${t('session.main')} (${agent})` : channel
-        detail = agent !== 'main' ? `agent: ${agent}` : ''
-      }
-
-      // 最后活跃时间
-      const updated = s.updatedAt || s.lastActivity
-      const timeStr = formatRelativeTime(updated)
-
-      item.innerHTML = `
-        <div class="session-item-content" style="flex:1;min-width:0">
-          <div class="cmd-text" style="font-family:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeText(name)}</div>
-          ${detail ? `<div class="cmd-desc">${escapeText(detail)}</div>` : ''}
-        </div>
-        ${timeStr ? `<div class="cmd-desc" style="flex-shrink:0">${timeStr}</div>` : ''}
-        ${isActive ? '<div style="color:var(--success);flex-shrink:0">●</div>' : ''}
-        <button class="session-delete-btn" title="${t('session.delete')}">✕</button>
-      `
-
-      // 点击切换会话
-      item.querySelector('.session-item-content').onclick = () => {
-        if (key === _sessionKey) { closeSessionPicker(); return }
-        switchSession(key)
-        closeSessionPicker()
-      }
-
-      // 删除按钮
-      item.querySelector('.session-delete-btn').onclick = (e) => {
-        e.stopPropagation()
-        confirmDeleteSession(key, name)
-      }
-
-      listEl.appendChild(item)
-    })
-  } catch (e) {
-    listEl.innerHTML = `<div class="session-loading" style="color:var(--danger)">${t('session.load.error')}: ${escapeText(e.message)}</div>`
-  }
-}
-
-/** 新建会话弹窗 */
-function promptNewSession() {
-  closeSessionPicker()
-  const defaultAgent = wsClient.snapshot?.sessionDefaults?.defaultAgentId || 'main'
-
-  const overlay = document.createElement('div')
-  overlay.className = 'session-overlay cmd-overlay visible'
-
-  const dialog = document.createElement('div')
-  dialog.className = 'session-dialog'
-  dialog.innerHTML = `
-    <h3>${t('session.new')}</h3>
-    <div class="form-group" style="margin:16px 0">
-      <label style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:block">${t('session.new.name')}</label>
-      <input type="text" id="new-session-name" placeholder="${t('session.new.name.placeholder')}"
-        style="width:100%;height:40px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:0 12px;color:var(--text-primary);font-size:14px;outline:none" />
-    </div>
-    <div style="margin:0 0 16px">
-      <div id="agent-toggle" style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
-        <span style="font-size:13px;color:var(--text-muted)">${t('session.new.agent')}</span>
-        <span id="agent-arrow" style="font-size:11px;color:var(--text-muted)">▶</span>
-      </div>
-      <div id="agent-field" style="display:none;margin-top:8px">
-        <input type="text" id="new-session-agent" value="${defaultAgent}" placeholder="main"
-          style="width:100%;height:40px;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:0 12px;color:var(--text-primary);font-size:14px;outline:none" />
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${t('session.new.agent.hint')}</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="session-dialog-btn cancel">${t('cancel')}</button>
-      <button class="session-dialog-btn confirm">${t('session.new.create')}</button>
-    </div>
-  `
-
-  dialog.querySelector('#agent-toggle').onclick = () => {
-    const f = dialog.querySelector('#agent-field')
-    const visible = f.style.display !== 'none'
-    f.style.display = visible ? 'none' : 'block'
-    dialog.querySelector('#agent-arrow').textContent = visible ? '▶' : '▼'
-  }
-  overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); dialog.remove() } }
-  dialog.querySelector('.cancel').onclick = () => { overlay.remove(); dialog.remove() }
-  dialog.querySelector('.confirm').onclick = () => {
-    const name = dialog.querySelector('#new-session-name').value.trim()
-    if (!name) return
-    const agent = dialog.querySelector('#new-session-agent')?.value.trim() || defaultAgent
-    const newKey = `agent:${agent}:${name}`
-    overlay.remove()
-    dialog.remove()
-    switchSession(newKey)
-    appendSystemMessage(t('session.created', { name }))
-  }
-
-  document.body.appendChild(overlay)
-  document.body.appendChild(dialog)
-  dialog.querySelector('#new-session-name').focus()
-  dialog.querySelector('#new-session-name').onkeydown = (e) => {
-    if (e.key === 'Enter') dialog.querySelector('.confirm').click()
-  }
-}
-
-/** 确认删除会话 */
-function confirmDeleteSession(key, name) {
-  const overlay = document.createElement('div')
-  overlay.className = 'session-overlay cmd-overlay visible'
-
-  const dialog = document.createElement('div')
-  dialog.className = 'session-dialog'
-  dialog.innerHTML = `
-    <h3>${t('session.delete')}</h3>
-    <p style="color:var(--text-secondary);font-size:14px;margin:12px 0">
-      ${t('session.delete.confirm', { name: escapeText(name) })}<br>${t('session.delete.warning')}
-    </p>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="session-dialog-btn cancel">${t('cancel')}</button>
-      <button class="session-dialog-btn danger">${t('session.delete.btn')}</button>
-    </div>
-  `
-
-  overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); dialog.remove() } }
-  dialog.querySelector('.cancel').onclick = () => { overlay.remove(); dialog.remove() }
-  dialog.querySelector('.danger').onclick = async () => {
-    overlay.remove()
-    dialog.remove()
-    try {
-      await wsClient.sessionsDelete(key)
-      // 如果删的是当前会话，切回主会话
-      if (key === _sessionKey) {
-        const mainKey = wsClient.snapshot?.sessionDefaults?.mainSessionKey || 'agent:main:main'
-        switchSession(mainKey)
-      }
-      await refreshSessionList()
-    } catch (e) {
-      appendSystemMessage(`${t('session.delete.fail')}: ${e.message}`)
-    }
-  }
-
-  document.body.appendChild(overlay)
-  document.body.appendChild(dialog)
-}
-
-function closeSessionPicker() {
-  document.querySelector('.session-overlay')?.remove()
-  document.querySelector('.session-panel')?.remove()
 }
 
 /** 断连横幅 */
@@ -1314,6 +1281,7 @@ function hideDisconnectBanner() {
 /** 切换到指定会话 */
 function switchSession(newKey) {
   _sessionKey = newKey
+  setPickerSessionKey(newKey)
   localStorage.setItem(STORAGE_SESSION_KEY, newKey)
   _lastHistoryHash = ''
   _seenFinalRunIds.clear()
@@ -1322,7 +1290,10 @@ function switchSession(newKey) {
   resetStreamState()
   updateSessionTitle()
   showLoadingOverlay()
-  loadHistory().finally(() => hideLoadingOverlay())
+  loadHistory().finally(() => {
+    hideLoadingOverlay()
+    restorePendingIndicator().catch(() => {})
+  })
 }
 
 /** 加载遮罩 */
